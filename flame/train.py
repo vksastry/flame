@@ -8,9 +8,25 @@ import json
 import os
 import time
 from datetime import timedelta
-
-import fla  # noqa
+from mpi4py import MPI
+import sys
+import socket
 import torch
+comm = MPI.COMM_WORLD
+rank = comm.Get_rank()
+size = comm.Get_size()
+local_rank = rank % torch.cuda.device_count() 
+os.environ['RANK']=str(rank)
+os.environ['WORLD_SIZE']=str(size)
+master_addr = "localhost"
+master_port = "29500"
+os.environ["LOCAL_RANK"] = str(local_rank)
+os.environ["MASTER_ADDR"] = master_addr
+os.environ["MASTER_PORT"] = master_port
+
+print("Hello World from rank {} of {} on {}".format(rank, size, socket.gethostname()))
+os.environ['WANDB_MODE'] = 'disabled'
+import fla  # noqa
 from fla.modules.fused_linear_cross_entropy import FusedLinearCrossEntropyLoss
 from fla.ops.utils import prepare_position_ids
 from torch.distributed.elastic.multiprocessing.errors import record
@@ -37,7 +53,18 @@ from flame.models.parallelize_fla import parallelize_fla
 from flame.models.pipeline_fla import pipeline_fla
 from flame.tools.utils import get_nparams_and_flops
 
+from transformers import CONFIG_MAPPING
+from fla.models import GLAConfig
+CONFIG_MAPPING["gla"] = GLAConfig
 
+import tempfile, os, multiprocessing as mp
+
+print("TEMP DIR:", tempfile.gettempdir())
+print("PYTHON TMPDIR:", os.environ.get("TMPDIR"))
+print("CWD:", os.getcwd())
+print("MP start method:", mp.get_start_method(allow_none=True))
+
+exit 
 def build_tokenizer(job_config: JobConfig) -> AutoTokenizer:
     return AutoTokenizer.from_pretrained(job_config.model.tokenizer_path)
 
@@ -78,13 +105,14 @@ def main(job_config: JobConfig):
     gc_handler = utils.GarbageCollection(gc_freq=job_config.training.gc_freq)
 
     device_module, device_type = utils.device_module, utils.device_type
-    device = torch.device(f"{device_type}:{int(os.environ['LOCAL_RANK'])}")
+    print(device_type)
+    device = torch.device(f"{device_type}:{int(rank)}")
     # Device has to be set before creating TorchFT manager.
     device_module.set_device(device)
     ft_manager = init_ft_manager(job_config)
 
     # init distributed
-    world_size = int(os.environ["WORLD_SIZE"])
+    world_size = int(size)
     if not ft_manager.enabled:
         parallel_dims = ParallelDims(
             dp_shard=job_config.training.data_parallel_shard_degree,
@@ -107,6 +135,7 @@ def main(job_config: JobConfig):
             ft_manager=ft_manager,
         )
     dist_utils.init_distributed(job_config)
+    torch.distributed.barrier()
     # initialize device memory monitor and get peak flops for MFU calculation
     device_memory_monitor = build_device_memory_monitor()
     gpu_peak_flops = utils.get_peak_flops(device_memory_monitor.device_name)

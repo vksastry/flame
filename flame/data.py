@@ -557,13 +557,15 @@ def build_dataset(
     color = utils.Color
     min_num_shards = dp_degree * num_workers if dp_degree else None
     if len(dataset.split(',')) == 1:
+        print(f"-------- streaming : {streaming}")
+        print(dataset)
         dataset = load_dataset(
             path=dataset,
             name=dataset_name,
             split=dataset_split,
             data_dir=data_dir,
             data_files=data_files,
-            trust_remote_code=True,
+            trust_remote_code=False,
             streaming=streaming,
             num_proc=num_workers if not streaming else None,
         )
@@ -584,6 +586,8 @@ def build_dataset(
                     f"Disabling the streaming mode and resharding dataset to {min_num_shards} shards."
                     f"{color.reset}"
                 )
+                print("**************")
+                print(dataset)
                 dataset = load_dataset(
                     path=dataset,
                     name=dataset_name,

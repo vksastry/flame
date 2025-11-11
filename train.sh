@@ -9,7 +9,7 @@ fi
 # e.g.
 # NNODE=1 NGPU=8 LOG_RANK=0 ./train.sh
 NNODE=${NNODE:-"1"}
-NGPU=${NGPU:-"8"}
+NGPU=${NGPU:-"4"}
 LOG_RANK=${LOG_RANK:-0}
 
 if [[ -z "${MASTER_ADDR}" ]]; then
@@ -58,7 +58,9 @@ NNODE=1 NGPU=8 LOG_RANK=0 bash train.sh \
   --metrics.log_freq 1
 '
 
-echo "Launching training..."
+
+export TMPDIR=/tmp/$USER
+mkdir -p $TMPDIR
 
 set -x
 path=$(grep -oP '(?<=--job.dump_folder )[^ ]+' <<< "$params")
@@ -68,6 +70,7 @@ tokenizer=$(grep -oP '(?<=--model.tokenizer_path )[^ ]+' <<< "$params")
 model=$(
   python -c "import fla, sys; from transformers import AutoConfig; print(AutoConfig.from_pretrained(sys.argv[1]).to_json_string())" "$config" | jq -r '.model_type'
 )
+
 
 mkdir -p $path
 cp * $path
@@ -86,28 +89,22 @@ fi
 RUN_NAME="$model-$(basename $path)"
 RUN_ID="$RUN_NAME-$date"
 
-export WANDB_RESUME=allow
-if [[ -z "${WANDB_PROJECT}" ]]; then
-  export WANDB_PROJECT="fla"
-fi
-if [[ -z "${WANDB_NAME}" ]]; then
-  export WANDB_NAME="$RUN_NAME"
-fi
-if [[ -z "${WANDB_RUN_ID}" ]]; then
-  export WANDB_RUN_ID="$RUN_ID"
-fi
+#export WANDB_RESUME=allow
+#if [[ -z "${WANDB_PROJECT}" ]]; then
+#  export WANDB_PROJECT="fla"
+#fi
+#if [[ -z "${WANDB_NAME}" ]]; then
+#  export WANDB_NAME="$RUN_NAME"
+#fi
+#if [[ -z "${WANDB_RUN_ID}" ]]; then
+#  export WANDB_RUN_ID="$RUN_ID"
+#fi
+
+export PYTORCH_CUDA_ALLOC_CONF="expandable_segments:True"
 
 PYTORCH_CUDA_ALLOC_CONF="expandable_segments:True" \
-torchrun --nnodes=${NNODE} \
-  --nproc_per_node=${NGPU} \
-  --rdzv_backend c10d \
-  --rdzv_endpoint "${MASTER_ADDR}:${MASTER_PORT}" \
-  --local-ranks-filter ${LOG_RANK} \
-  --role rank \
-  --tee 3 \
-  --log-dir $path/logs \
-  -m flame.train \
-  $params
+source /lus/eagle/projects/datascience/vsastry/projects/LinearAttention/venvs/flame_env/bin/activate
+mpiexec -np 4 -ppn 4 python -m flame.train $params 
 
 echo "TRAINING DONE!"
 echo "Converting the DCP checkpoints to HF format..."
