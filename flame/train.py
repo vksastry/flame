@@ -15,7 +15,17 @@ import torch
 comm = MPI.COMM_WORLD
 rank = comm.Get_rank()
 size = comm.Get_size()
-local_rank = rank % torch.cuda.device_count() 
+if torch.cuda.is_available():
+    device = torch.device('cuda')
+    local_rank = rank % torch.cuda.device_count() 
+    torch.cuda.set_device(int(local_rank))
+elif torch.xpu.is_available():
+    device = torch.device('xpu')
+    local_rank = rank % torch.xpu.device_count() 
+    torch.xpu.set_device(int(local_rank))
+else: 
+    device = torch.device('cpu')
+
 os.environ['RANK']=str(rank)
 os.environ['WORLD_SIZE']=str(size)
 master_addr = "localhost"

@@ -37,10 +37,10 @@ setup(
     python_requires='>=3.10',
     install_requires=[
         'flash-linear-attention',
-        'torch>=2.5',
+        #'torch>=2.5',
         'torchdata',
         'transformers>=4.45.0',
-        'triton>=3.0',
+        #'triton>=3.0',
         'datasets>=3.3.0',
         'einops',
         'ninja',

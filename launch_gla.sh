@@ -1,4 +1,4 @@
-NNODE=1 NGPU=4 LOG_RANK=0 bash train.sh \
+NNODE=1 NGPU=12 LOG_RANK=0 bash train.sh \
 	  --job.config_file flame/models/fla.toml \
 	  --job.dump_folder exp/gla-340M-10B/bs32 \
 	  --model.config configs/gla_340M.json \

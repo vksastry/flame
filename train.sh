@@ -103,7 +103,7 @@ RUN_ID="$RUN_NAME-$date"
 export PYTORCH_CUDA_ALLOC_CONF="expandable_segments:True"
 
 PYTORCH_CUDA_ALLOC_CONF="expandable_segments:True" \
-source /lus/eagle/projects/datascience/vsastry/projects/LinearAttention/venvs/flame_env/bin/activate
+#source /lus/eagle/projects/datascience/vsastry/projects/LinearAttention/venvs/flame_env/bin/activate
 mpiexec -np 4 -ppn 4 python -m flame.train $params 
 
 echo "TRAINING DONE!"
