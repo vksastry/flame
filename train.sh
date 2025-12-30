@@ -89,7 +89,10 @@ fi
 RUN_NAME="$model-$(basename $path)"
 RUN_ID="$RUN_NAME-$date"
 
-#export WANDB_RESUME=allow
+export WANDB_RESUME=allow
+export WANDB_PROJECT=Hgt
+export WANDB_RUN_GROUP=gated_deltanet-hgt
+export WANDB_NAME=hgt-gdn-train
 #if [[ -z "${WANDB_PROJECT}" ]]; then
 #  export WANDB_PROJECT="fla"
 #fi
@@ -104,11 +107,12 @@ export PYTORCH_CUDA_ALLOC_CONF="expandable_segments:True"
 
 PYTORCH_CUDA_ALLOC_CONF="expandable_segments:True" \
 source /lus/eagle/projects/datascience/vsastry/projects/LinearAttention/venvs/flame_env/bin/activate
-mpiexec -np 4 -ppn 4 python -m flame.train $params 
+#mpiexec -np 1 -ppn 4 python -m flame.train_hgt $params 
+mpiexec -np 4 -ppn 4 python -m flame.train_hgt $params 
 
 echo "TRAINING DONE!"
 echo "Converting the DCP checkpoints to HF format..."
-
+exit 0
 python -m flame.utils.convert_dcp_to_hf \
   --path $path \
   --step $steps \

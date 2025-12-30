@@ -457,6 +457,30 @@ class JobConfig:
             action="store_true",
             help="Use deterministic algorithms wherever possible, may be slower",
         )
+        self.parser.add_argument(
+                "--training.input_len",
+                type=int,
+                default=8, 
+                help="Choose input window length for hgt data", 
+        )
+        self.parser.add_argument(
+                "--training.target_len",
+                type=int,
+                default=2, 
+                help="Choose output window length for hgt data",   
+        )
+        self.parser.add_argument(
+                "--training.stride",
+                type=int,
+                default=1,
+                help="Choose stride for the next input for hgt data", 
+        )
+        self.parser.add_argument(
+                "--training.levels",
+                type=str,
+                default="500.0",
+                help="Choose pressure level for hgt data", 
+        )
         # metrics configs
         self.parser.add_argument(
             "--metrics.log_freq",
