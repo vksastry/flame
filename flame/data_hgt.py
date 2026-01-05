@@ -64,6 +64,14 @@ class HGTSpatioTemporalDataset(Dataset):
                 arr = arr[:, level_idx, :, :]
 
         self.data = arr  # (T, C_sel, H, W), float32, memmap-backed
+        #pdb.set_trace()
+        #data_flat = self.data.reshape(-1)
+        #mean: 11884.07 std: 9119.372
+        self.mean = 11884.07 #self.data.mean()
+        self.std = 9119.372 #self.data.std()
+        print("Normalization stats:")
+        print(" mean:", self.mean)
+        print(" std :", self.std)
         self.input_len = input_len
         self.target_len = target_len
         self.stride = stride
@@ -90,6 +98,10 @@ class HGTSpatioTemporalDataset(Dataset):
         # Slices of memmap → views, cheap
         x_np = self.data[t0:t1]  # (T_in, C, H, W)
         y_np = self.data[t1:t2]  # (T_out, C, H, W)
+
+        # normalize the data 
+        x_np = (x_np - self.mean) / self.std
+        y_np = (y_np - self.mean) / self.std
 
         # np.asarray keeps it as view, torch.from_numpy can wrap memmap-backed arrays
         x = torch.from_numpy(np.asarray(x_np))
@@ -136,6 +148,7 @@ def build_hgt_dataloader(
         stride=stride,
         level=int(levels),
     )
+    
     print(f"get the dataloader")
     dataloader = DataLoader(
         dataset,

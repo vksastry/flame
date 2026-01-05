@@ -1,7 +1,7 @@
 import torch
 import torch.nn as nn
 from transformers.modeling_outputs import CausalLMOutputWithPast
-
+import pdb
 class HGTModelWrapper(nn.Module):
     def __init__(self, base_model: nn.Module, C: int, H: int, W: int):
         super().__init__()
@@ -80,7 +80,26 @@ class HGTModelWrapper(nn.Module):
             x = inputs.view(B, T, C * H * W)   # (B, T, C*H*W)
             inputs_embeds = self.proj(x)       # (B, T, hidden_size)
             input_ids = None                   # make sure base model doesn't use embedding()
-        
+            """
+            print("inputs stats:",
+                  inputs.mean().item(),
+                  inputs.std().item(),
+                  inputs.min().item(),
+                  inputs.max().item(),
+                  flush=True)
+            print("x stats:",
+                  x.mean().item(),
+                  x.std().item(),
+                  x.min().item(),
+                  x.max().item(),
+                  flush=True)
+            print("inputs_embeds stats:",
+                  inputs_embeds.mean().item(),
+                  inputs_embeds.std().item(),
+                  inputs_embeds.min().item(),
+                  inputs_embeds.max().item(),
+                  flush=True)
+            """
         # Now call the base HF/FLA model with whatever we have
         output = self.model(
             input_ids=input_ids,
@@ -101,12 +120,32 @@ class HGTModelWrapper(nn.Module):
             #print("hidden:", hidden.shape, "labels:", labels.shape, flush=True)
             # Take last T_out timesteps from hidden as forecast "slots"
             hidden_last = hidden[:, -T_out:, :]                  # (B, T_out, hidden_size)
+            
             pred_flat = self.forecast_head(hidden_last)          # (B, T_out, C*H*W)
             pred = pred_flat.view(B, T_out, C, H, W)             # (B, T_out, C, H, W)
 
             logits = pred                                        # treat logits as forecast fields
             loss = self.criterion(pred, labels)
-
+        """
+        with torch.no_grad():
+            print("labels stats:",
+                  labels.mean().item(),
+                  labels.std().item(),
+                  labels.min().item(),
+                  labels.max().item(),
+                  )
+            print("pred stats:",
+                  pred.mean().item(),
+                  pred.std().item(),
+                  pred.min().item(),
+                  pred.max().item(),
+                  )
+            diff = pred - labels
+            print("RMSE:", torch.sqrt((diff ** 2).mean()).item())
+            #print("RMSE:", loss.sqrt().item())
+            pdb.set_trace()
+        #pdb.set_trace()
+        """
         # 4. Package like HF CausalLMOutputWithPast so train loop can use output.loss
         return CausalLMOutputWithPast(
             loss=loss,

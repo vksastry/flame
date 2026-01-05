@@ -4,7 +4,17 @@ params=""
 if [ $# -ne 0 ]; then
     params="$*"
 fi
+model_name=$(echo "$params" | grep -oP 'configs/\K[^ ]+(?=\.json)')
+echo "$model_name"
 
+input_len=$(echo "$params" | grep -oP '(?<=--training\.input_len )\S+')
+echo "$input_len"
+
+target_len=$(echo "$params" | grep -oP '(?<=--training\.target_len )\S+')
+echo "$target_len"
+wand_name="${model_name}-in${input_len}-out${target_len}"
+echo $wand_name
+#exit 0
 # use envs as local params for convenience
 # e.g.
 # NNODE=1 NGPU=8 LOG_RANK=0 ./train.sh
@@ -90,9 +100,9 @@ RUN_NAME="$model-$(basename $path)"
 RUN_ID="$RUN_NAME-$date"
 
 export WANDB_RESUME=allow
-export WANDB_PROJECT=Hgt
-export WANDB_RUN_GROUP=gated_deltanet-hgt
-export WANDB_NAME=hgt-gdn-train
+export WANDB_PROJECT=HgtLA
+export WANDB_RUN_GROUP=$model_name #gated_deltanet-hgt
+export WANDB_NAME=$wand_name
 #if [[ -z "${WANDB_PROJECT}" ]]; then
 #  export WANDB_PROJECT="fla"
 #fi
@@ -102,13 +112,14 @@ export WANDB_NAME=hgt-gdn-train
 #if [[ -z "${WANDB_RUN_ID}" ]]; then
 #  export WANDB_RUN_ID="$RUN_ID"
 #fi
-
+TIMESTAMP=$(date +"%Y-%m-%d_%H-%M-%S")
+log_file="${model_name}-in${input_len}-out${target_len}-$TIMESTAMP.log"
 export PYTORCH_CUDA_ALLOC_CONF="expandable_segments:True"
 
 PYTORCH_CUDA_ALLOC_CONF="expandable_segments:True" \
 source /lus/eagle/projects/datascience/vsastry/projects/LinearAttention/venvs/flame_env/bin/activate
 #mpiexec -np 1 -ppn 4 python -m flame.train_hgt $params 
-mpiexec -np 4 -ppn 4 python -m flame.train_hgt $params 
+mpiexec -np 4 -ppn 4 python -m flame.train_hgt $params | tee $log_file 
 
 echo "TRAINING DONE!"
 echo "Converting the DCP checkpoints to HF format..."

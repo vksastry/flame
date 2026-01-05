@@ -9,21 +9,20 @@ GLOBAL_BATCH_SIZE="$((${NGPUS}*${BS}))"
 echo "GLobal BS : $GLOBAL_BATCH_SIZE"
 STEPS_PER_EPOCH=$(( (SAMPLES + GLOBAL_BATCH_SIZE - 1) / GLOBAL_BATCH_SIZE ))
 echo "Steps per epoch: $STEPS_PER_EPOCH"
-NEPOCHS=15
+NEPOCHS=1
 T_STEPS="$((${STEPS_PER_EPOCH}*${NEPOCHS}))"
 echo "Steps number: $T_STEPS"
-cd /eagle/datascience/vsastry/projects/LinearAttention/flame
-module use /soft/modulefiles; module load conda; conda activate base
-source /eagle/datascience/vsastry/projects/LinearAttention/venvs/flame_env/bin/activate
+
 # Calculate the ceiling using pure bash integer arithmetic
 # STEPS_PER_EPOCH=$(( (SAMPLES + BATCH_SIZE - 1) / BATCH_SIZE ))
 #
 # echo "Steps per epoch: $STEPS_PER_EPOCH"
 #
+
 NNODE=$NHOSTS NGPU=$NGPU_PER_HOST LOG_RANK=0 bash train.sh \
 	  --job.config_file flame/models/fla.toml \
-	  --job.dump_folder exp/gated_deltanet-340M-hgt/ \
-	  --model.config configs/gated_deltanet_340M.json \
+	  --job.dump_folder exp/kda-340M-hgt/ \
+	  --model.config configs/kda_340M.json \
 	  --model.tokenizer_path fla-hub/delta_net-1.3B-100B \
 	  --optimizer.name AdamW \
 	  --optimizer.eps 1e-15 \
@@ -39,9 +38,9 @@ NNODE=$NHOSTS NGPU=$NGPU_PER_HOST LOG_RANK=0 bash train.sh \
 	  --training.skip_nan_inf \
 	  --training.data_files /eagle/datascience/vsastry/projects/LatentTwinShared/hgt_all_new.npy \
 	  --training.input_len 8 \
-	  --training.target_len 1 \
+          --training.target_len 2 \
           --training.stride 1 \
-	  --training.levels 7 \
+          --training.levels 7 \
 	  --training.dataset_split train \
 	  --training.num_workers 0 \
 	  --training.prefetch_factor 1 \

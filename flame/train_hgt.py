@@ -238,7 +238,7 @@ def main(job_config: JobConfig):
         init_device = "cpu"
     else:
         init_device = device_type
-
+    
     # apply parallelisms and initialization
     if parallel_dims.pp_enabled:
         # apply PT-D Pipeline Parallel
@@ -392,6 +392,29 @@ def main(job_config: JobConfig):
         f"{color.green}  Number of parameters = {model_param_count:,} {color.reset}"
     )
 
+    with torch.no_grad():
+        # Reinit proj
+        torch.nn.init.xavier_uniform_(model.proj.weight)
+        torch.nn.init.zeros_(model.proj.bias)
+
+        # Reinit forecast_head too (good idea)
+        torch.nn.init.xavier_uniform_(model.forecast_head.weight)
+        torch.nn.init.zeros_(model.forecast_head.bias)
+   
+    """
+    w = model.proj.weight
+    b = model.proj.bias
+    print("proj weight device:", w.device, "is_meta:", w.is_meta)
+    print("proj bias  device:", b.device, "is_meta:", b.is_meta)
+
+    if not w.is_meta:
+        print("proj weight stats:", w.mean().item(), w.std().item())
+        print("proj bias  stats:", b.mean().item(), b.std().item())
+    
+    #for name, p in model.named_parameters():
+    #    if "proj" in name or "forecast_head" in name:
+    #        print("param", name, "requires_grad:", p.requires_grad)
+    """
     with (
         maybe_enable_profiling(
             job_config, global_step=train_state.step
@@ -489,12 +512,14 @@ def main(job_config: JobConfig):
                     # Non-PP forward / backward
                     with train_context(optional_context_parallel_ctx):
                         with maybe_enable_amp:
+                            #logger.info(f"{color.red}  get the o/p ******** {color.reset}")
                             output = model(
                                 inputs=inputs,
                                 labels=targets,
                                 position_ids=position_ids,
                                 cu_seqlens=cu_seqlens,
                         )
+                        #logger.info(f"{color.red}  got the o/p ******** {color.reset}")
                         loss = (
                             output.loss
                             / job_config.training.gradient_accumulation_steps
@@ -503,7 +528,26 @@ def main(job_config: JobConfig):
 
                 losses.append(loss)
             loss = sum(losses)
-
+    
+            with torch.no_grad():
+                if train_state.step % 100 == 0: 
+                    print("labels stats:",
+                        targets.mean().item(),
+                        targets.std().item(),
+                        targets.min().item(),
+                        targets.max().item(),
+                        )
+                    print("pred stats:",
+                        output.logits.mean().item(),
+                        output.logits.std().item(),
+                        output.logits.min().item(),
+                        output.logits.max().item(),
+                        )
+                    diff = output.logits - targets
+                    const = targets.mean()
+                    baseline_mse = ((targets - const) ** 2).mean().item()
+                    logger.info(f"{color.red} rmse: {torch.sqrt((diff ** 2).mean()).item()} at trainstep : {train_state.step} ")
+                    logger.info(f"{color.red} mean-baseline MSE: {baseline_mse} at trainstep : {train_state.step} ")
             # clip gradients
             grad_norm = dist_utils.clip_grad_norm_(
                 [p for m in model_parts for p in m.parameters()],
@@ -586,7 +630,7 @@ def main(job_config: JobConfig):
                     f"{color.blue}lr: {last_lr:.4e} gnorm: {grad_norm:5.2f} "
                     f"{color.magenta}[{str(train_state.elapsed).split('.')[0]:>8}<{str(eta).split('.')[0]:>8}]{color.reset}"
                 )
-            logger.info(f"calling checkpoint save at train_state.step:{train_state.step},steps: {job_config.training.steps}")
+            #logger.info(f"calling checkpoint save at train_state.step:{train_state.step},steps: {job_config.training.steps}")
             #pdb.set_trace()
             checkpoint.save(
                 train_state.step, force=(train_state.step == job_config.training.steps)
