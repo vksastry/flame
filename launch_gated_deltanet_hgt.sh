@@ -12,7 +12,7 @@ echo "Steps per epoch: $STEPS_PER_EPOCH"
 NEPOCHS=15
 T_STEPS="$((${STEPS_PER_EPOCH}*${NEPOCHS}))"
 echo "Steps number: $T_STEPS"
-cd /eagle/datascience/vsastry/projects/LinearAttention/flame
+cd /eagle/datascience/vsastry/projects/LinearAttention/new_repo/flame 
 module use /soft/modulefiles; module load conda; conda activate base
 source /eagle/datascience/vsastry/projects/LinearAttention/venvs/flame_env/bin/activate
 # Calculate the ceiling using pure bash integer arithmetic
