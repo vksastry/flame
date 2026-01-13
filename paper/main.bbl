@@ -1,0 +1,85 @@
+\begin{thebibliography}{10}
+\providecommand{\url}[1]{\texttt{#1}}
+\providecommand{\urlprefix}{URL }
+\providecommand{\doi}[1]{https://doi.org/#1}
+
+\bibitem{bauer2015quiet}
+Bauer, P., Thorpe, A., Brunet, G.: The quiet revolution of numerical weather
+  prediction. Nature  \textbf{525}(7567),  47--55 (2015)
+
+\bibitem{bi2023accurate}
+Bi, K., Xie, L., Zhang, H., Chen, X., Gu, X., Tian, Q.: Accurate medium-range
+  global weather forecasting with {3D} neural networks. Nature
+  \textbf{619}(7970),  533--538 (2023)
+
+\bibitem{dao2024transformers}
+Dao, T., Gu, A.: Transformers are {SSM}s: Generalized models and efficient
+  algorithms through structured state space duality  (2024)
+
+\bibitem{gu2024mamba}
+Gu, A., Dao, T.: Mamba: Linear-time sequence modeling with selective state
+  spaces. arXiv preprint arXiv:2312.00752  (2024)
+
+\bibitem{gu2022efficiently}
+Gu, A., Goel, K., R{\'e}, C.: Efficiently modeling long sequences with
+  structured state spaces. In: International Conference on Learning
+  Representations (2022)
+
+\bibitem{holton2013introduction}
+Holton, J.R., Hakim, G.J.: An Introduction to Dynamic Meteorology. Academic
+  Press, 5th edn. (2013)
+
+\bibitem{kalnay1996ncep}
+Kalnay, E., Kanamitsu, M., Kistler, R., Collins, W., Deaven, D., Gandin, L.,
+  Iredell, M., Saha, S., White, G., Woollen, J., et~al.: The {NCEP/NCAR}
+  40-year reanalysis project. Bulletin of the American Meteorological Society
+  \textbf{77}(3),  437--472 (1996)
+
+\bibitem{katharopoulos2020transformers}
+Katharopoulos, A., Vyas, A., Pappas, N., Fleuret, F.: Transformers are {RNN}s:
+  Fast autoregressive transformers with linear attention. In: International
+  Conference on Machine Learning. pp. 5156--5165. PMLR (2020)
+
+\bibitem{team2025kimi}
+{Kimi Team}, {Moonshot AI}: {Kimi Linear}: An expressive, efficient attention
+  architecture. arXiv preprint arXiv:2510.26692  (2025)
+
+\bibitem{lam2023learning}
+Lam, R., Sanchez-Gonzalez, A., Willson, M., Wirnsberger, P., Fortunato, M.,
+  Alet, F., Ravuri, S., Ewalds, T., Eaton-Rosen, Z., Hu, W., et~al.: Learning
+  skillful medium-range global weather forecasting. Science
+  \textbf{382}(6677),  1416--1421 (2023)
+
+\bibitem{liu2021swin}
+Liu, Z., Lin, Y., Cao, Y., Hu, H., Wei, Y., Zhang, Z., Lin, S., Guo, B.: Swin
+  transformer: Hierarchical vision transformer using shifted windows. In:
+  Proceedings of the IEEE/CVF International Conference on Computer Vision. pp.
+  10012--10022 (2021)
+
+\bibitem{nguyen2023climax}
+Nguyen, T., Brandstetter, J., Kapoor, A., Gupta, J.K., Grover, A.: {ClimaX}: A
+  foundation model for weather and climate. In: International Conference on
+  Machine Learning. pp. 25904--25938. PMLR (2023)
+
+\bibitem{pathak2022fourcastnet}
+Pathak, J., Subramanian, S., Harrington, P., Raja, S., Chattopadhyay, A.,
+  Mardani, M., Kurth, T., Hall, D., Li, Z., Azizzadenesheli, K., et~al.:
+  {FourCastNet}: A global data-driven high-resolution weather model using
+  adaptive {Fourier} neural operators. arXiv preprint arXiv:2202.11214  (2022)
+
+\bibitem{schlag2021linear}
+Schlag, I., Irie, K., Schmidhuber, J.: Linear transformers are secretly fast
+  weight programmers. In: International Conference on Machine Learning. pp.
+  9355--9366. PMLR (2021)
+
+\bibitem{vaswani2017attention}
+Vaswani, A., Shazeer, N., Parmar, N., Uszkoreit, J., Jones, L., Gomez, A.N.,
+  Kaiser, {\L}., Polosukhin, I.: Attention is all you need. In: Advances in
+  Neural Information Processing Systems. vol.~30 (2017)
+
+\bibitem{yang2024gated}
+Yang, S., Wang, B., Shen, Y., Panda, R., Kim, Y.: Gated linear attention
+  transformers with hardware-efficient training. In: International Conference
+  on Machine Learning. PMLR (2024)
+
+\end{thebibliography}

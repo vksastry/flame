@@ -1,0 +1,48 @@
+This is BibTeX, Version 0.99d (TeX Live 2023/Debian)
+Capacity: max_strings=200000, hash_size=200000, hash_prime=170003
+The top-level auxiliary file: main.aux
+The style file: splncs04.bst
+Database file #1: references.bib
+Warning--empty journal in dao2024transformers
+You've used 16 entries,
+            2850 wiz_defined-function locations,
+            684 strings with 7906 characters,
+and the built_in function-call counts, 10571 in all, are:
+= -- 836
+> -- 462
+< -- 13
++ -- 191
+- -- 172
+* -- 705
+:= -- 1384
+add.period$ -- 24
+call.type$ -- 16
+change.case$ -- 145
+chr.to.int$ -- 0
+cite$ -- 17
+duplicate$ -- 887
+empty$ -- 868
+format.name$ -- 188
+if$ -- 2256
+int.to.chr$ -- 0
+int.to.str$ -- 16
+missing$ -- 197
+newline$ -- 54
+num.names$ -- 32
+pop$ -- 393
+preamble$ -- 1
+purify$ -- 115
+quote$ -- 0
+skip$ -- 258
+stack$ -- 0
+substring$ -- 515
+swap$ -- 499
+text.length$ -- 13
+text.prefix$ -- 0
+top$ -- 0
+type$ -- 62
+warning$ -- 1
+while$ -- 72
+width$ -- 18
+write$ -- 161
+(There was 1 warning)
