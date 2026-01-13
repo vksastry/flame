@@ -501,7 +501,7 @@ def main(job_config: JobConfig):
 
     # load initial checkpoint
     checkpoint = CheckpointManager(
-        dataloader=None, #dataloader,
+        dataloader=train_loader,
         model_parts=model_parts,
         optimizers=optimizers,
         lr_schedulers=lr_schedulers,
@@ -618,14 +618,16 @@ def main(job_config: JobConfig):
         f"{color.green}  Number of parameters = {model_param_count:,} {color.reset}"
     )
 
-    with torch.no_grad():
-        # Reinit proj
-        torch.nn.init.xavier_uniform_(model.proj.weight)
-        torch.nn.init.zeros_(model.proj.bias)
+    # Only reinitialize if NOT loading from a checkpoint
+    if job_config.checkpoint.load_step == -1:
+        with torch.no_grad():
+            # Reinit proj
+            torch.nn.init.xavier_uniform_(model.proj.weight)
+            torch.nn.init.zeros_(model.proj.bias)
 
-        # Reinit forecast_head too (good idea)
-        torch.nn.init.xavier_uniform_(model.forecast_head.weight)
-        torch.nn.init.zeros_(model.forecast_head.bias)
+            # Reinit forecast_head too (good idea)
+            torch.nn.init.xavier_uniform_(model.forecast_head.weight)
+            torch.nn.init.zeros_(model.forecast_head.bias)
    
     """
     w = model.proj.weight
@@ -888,8 +890,8 @@ def main(job_config: JobConfig):
             checkpoint.save(
                 train_state.step, force=(train_state.step == job_config.training.steps)
             )
-            if _rank0():
-                print("[DEBUG] model checksum before load:", model_checksum(model), flush=True)
+            # if _rank0():
+            #     print("[DEBUG] model checksum before load:", model_checksum(model), flush=True)
     
 
             # signal the profiler that the next profiling step has started

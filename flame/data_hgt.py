@@ -7,7 +7,8 @@ from typing import Sequence, Optional, Union
 import numpy as np
 import xarray as xr
 import torch
-from torch.utils.data import Dataset, DataLoader, DistributedSampler
+from torch.utils.data import Dataset, DistributedSampler
+from torchdata.stateful_dataloader import StatefulDataLoader
 from flame.config_manager import JobConfig
 from torchtitan.tools.logging import init_logger, logger
 import pdb
@@ -242,7 +243,7 @@ def build_hgt_dataloader(
         shuffle_train = True
 
     print(f"get the dataloader")
-    train_loader = DataLoader(
+    train_loader = StatefulDataLoader(
         train_ds,
         batch_size=job_config.training.batch_size,
         sampler=train_sampler,
@@ -253,7 +254,7 @@ def build_hgt_dataloader(
         drop_last=True,
     )
 
-    val_loader = DataLoader(
+    val_loader = StatefulDataLoader(
         val_ds,
         batch_size=job_config.training.batch_size,
         sampler=val_sampler,

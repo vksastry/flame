@@ -22,8 +22,11 @@ pip install git+https://github.com/pytorch/torchtitan.git@0b44d4c
 # Single GPU debugging
 NGPU=1 bash train.sh --job.config_file flame/models/fla.toml --model.config configs/transformer_340M.json ...
 
-# Multi-GPU (default 8)
+# Multi-GPU (default 4)
 bash train.sh --job.config_file flame/models/fla.toml --model.config configs/gla_340M.json ...
+
+# Custom GPU count
+NGPU=8 bash train.sh ...
 
 # Multi-node: set MASTER_ADDR and MASTER_PORT environment variables
 ```
@@ -32,6 +35,11 @@ bash train.sh --job.config_file flame/models/fla.toml --model.config configs/gla
 ```bash
 pre-commit run --all-files
 ```
+Uses isort (import sorting) and flake8 (max line length: 127).
+
+### Alternative Training Scripts
+- `flame.train` - Standard LLM training
+- `flame.train_hgt` - HGT (Heterogeneous Graph Transformer) experiments
 
 ### Help
 ```bash
@@ -86,6 +94,12 @@ Add models under `custom_models/` (see `custom_models/sba/` for example):
 2. Create model class extending `PreTrainedModel`
 3. Register with `AutoModelForCausalLM`, `AutoModel`, `AutoConfig` in `__init__.py`
 4. Create JSON config with matching `model_type`
+
+## Code Style
+
+- Max line length: 127 characters
+- Import sorting: isort
+- Linter: flake8
 
 ## Dependencies
 
