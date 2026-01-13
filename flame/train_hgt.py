@@ -521,6 +521,16 @@ def main(job_config: JobConfig):
         logger.info("Created seed checkpoint")
         return
 
+    # Only reinitialize if NOT loading from a checkpoint
+    #if job_config.checkpoint.load_step == -1:
+    with torch.no_grad():
+        # Reinit proj
+        torch.nn.init.xavier_uniform_(model.proj.weight)
+        torch.nn.init.zeros_(model.proj.bias)
+
+        # Reinit forecast_head too (good idea)
+        torch.nn.init.xavier_uniform_(model.forecast_head.weight)
+        torch.nn.init.zeros_(model.forecast_head.bias)
     keys = ["proj.weight", "forecast_head.weight", "model.layers.0.attn.q_proj.weight"]
     pre = {}
     for k in keys:
@@ -617,17 +627,6 @@ def main(job_config: JobConfig):
     logger.info(
         f"{color.green}  Number of parameters = {model_param_count:,} {color.reset}"
     )
-
-    # Only reinitialize if NOT loading from a checkpoint
-    if job_config.checkpoint.load_step == -1:
-        with torch.no_grad():
-            # Reinit proj
-            torch.nn.init.xavier_uniform_(model.proj.weight)
-            torch.nn.init.zeros_(model.proj.bias)
-
-            # Reinit forecast_head too (good idea)
-            torch.nn.init.xavier_uniform_(model.forecast_head.weight)
-            torch.nn.init.zeros_(model.forecast_head.bias)
    
     """
     w = model.proj.weight
