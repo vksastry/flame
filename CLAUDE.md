@@ -53,7 +53,7 @@ Uses isort (import sorting) and flake8 (max line length: 127).
 
 ### Alternative Training Scripts
 - `flame.train` - Standard LLM training
-- `flame.train_hgt` - HGT (Heterogeneous Graph Transformer) experiments
+- `flame.train_hgt` - Geopotential height (HGT) forecasting experiments
 
 ### Checkpoint Testing
 ```bash
