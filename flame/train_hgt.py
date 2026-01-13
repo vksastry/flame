@@ -12,6 +12,8 @@ from mpi4py import MPI
 import sys
 import socket
 import torch
+import random
+import hashlib
 comm = MPI.COMM_WORLD
 rank = comm.Get_rank()
 size = comm.Get_size()
@@ -56,9 +58,9 @@ from flame.models.hgt_model import HGTModelWrapper
 from transformers import CONFIG_MAPPING
 from fla.models import GLAConfig
 CONFIG_MAPPING["gla"] = GLAConfig
-
+from utils.plotting_function import plot_geopotential_comparison 
 import tempfile, os, multiprocessing as mp
-
+import torch.distributed as dist
 print("TEMP DIR:", tempfile.gettempdir())
 print("PYTHON TMPDIR:", os.environ.get("TMPDIR"))
 print("CWD:", os.getcwd())
@@ -71,6 +73,187 @@ except ImportError:
 def build_tokenizer(job_config: JobConfig) -> AutoTokenizer:
     return AutoTokenizer.from_pretrained(job_config.model.tokenizer_path)
 
+def _rank0():
+    return (not dist.is_available()) or (not dist.is_initialized()) or dist.get_rank() == 0
+
+try:
+    from torch.distributed.tensor import DTensor
+except Exception:
+    DTensor = None
+
+def checksum_named_param_local(model, name_substr: str, n: int = 1024):
+    matches = []
+    for nme, p in model.named_parameters():
+        if name_substr in nme:
+            matches.append((nme, p))
+    if len(matches) == 0:
+        return None, None
+    if len(matches) > 1:
+        # pick the shortest/most specific match (usually correct)
+        matches.sort(key=lambda x: len(x[0]))
+    nme, p = matches[0]
+
+    t = p.detach()
+    if DTensor is not None and isinstance(t, DTensor):
+        t = t.to_local()
+    t = t.float().reshape(-1)[:n].contiguous().cpu()
+    h = hashlib.sha256(t.numpy().tobytes()).hexdigest()
+    return nme, h
+
+def debug_embeddings_optimizer_state(model, optimizers, tag="", max_print=40):
+    """
+    Prints:
+      - whether embeddings/lm_head are present
+      - whether they are in optimizer param groups
+      - whether they have grad
+      - whether optimizer has state for them
+    """
+    if not _rank0():
+        return
+
+    # pick the first optimizer (torchtitan returns a list)
+    opt = optimizers[0] if isinstance(optimizers, (list, tuple)) else optimizers
+
+    name_to_param = dict(model.named_parameters())
+
+    def find_name(substr):
+        for n in name_to_param:
+            if substr in n:
+                return n
+        return None
+
+    emb_name = find_name("embeddings.weight")
+    lm_name  = find_name("lm_head.weight")
+
+    print(f"\n[DEBUG:{tag}] ----- model/optimizer debug -----")
+    print(f"[DEBUG:{tag}] found embeddings.weight name = {emb_name}")
+    print(f"[DEBUG:{tag}] found lm_head.weight name     = {lm_name}")
+
+    # Build a quick set of params in optimizer
+    opt_params = set()
+    for g in opt.param_groups:
+        for p in g["params"]:
+            opt_params.add(p)
+
+    def report(pname):
+        if pname is None:
+            return
+        p = name_to_param[pname]
+        in_opt = p in opt_params
+        has_grad = (p.grad is not None)
+        has_state = (p in opt.state) and (len(opt.state[p]) > 0)
+        # Adam-like state often has keys: step, exp_avg, exp_avg_sq
+        state_keys = list(opt.state[p].keys())[:10] if has_state else []
+        print(f"[DEBUG:{tag}] {pname}")
+        print(f"            requires_grad={p.requires_grad}  in_optimizer={in_opt}")
+        print(f"            grad_present={has_grad}  grad_norm={(p.grad.norm().item() if has_grad else None)}")
+        print(f"            opt_has_state={has_state}  opt_state_keys={state_keys}")
+
+    report(emb_name)
+    report(lm_name)
+
+    # Also: how many parameters have grad at all (useful)
+    n_total = 0
+    n_grad = 0
+    for n, p in model.named_parameters():
+        if p.requires_grad:
+            n_total += 1
+            if p.grad is not None:
+                n_grad += 1
+    print(f"[DEBUG:{tag}] trainable params with grad: {n_grad}/{n_total}")
+    print(f"[DEBUG:{tag}] --------------------------------\n")
+
+
+@torch.no_grad()
+def evaluate(
+    model,
+    val_loader,
+    plot,
+    plot_path,
+    device_type,
+    lat, 
+    lon, 
+    vmin, 
+    vmax,
+    max_batches: int | None = None,
+):
+    """
+    Evaluate regression loss on validation data.
+
+    Args:
+        max_batches: None => evaluate entire val_loader
+                    int  => evaluate only this many batches
+
+    Returns:
+        mean validation loss (float), averaged across all ranks
+    """
+    model.eval()
+
+    total_loss = 0.0
+    total_batches = 0
+
+    # choose one of the batch bidx to plot
+    if plot and max_batches is not None:
+        rng = random.Random(0)
+        plot_bidx = rng.randint(0, max_batches - 1)
+
+    for bidx, batch in enumerate(val_loader):
+        if max_batches is not None and bidx >= max_batches:
+            break
+
+        inputs = batch["inputs"].to(device_type, non_blocking=True)
+        targets = batch["targets"].to(device_type, non_blocking=True)
+
+        cu_seqlens = batch["cu_seqlens"].to(device_type) if "cu_seqlens" in batch else None
+
+        T_in = inputs.shape[1]
+        if cu_seqlens is not None:
+            position_ids = prepare_position_ids(cu_seqlens).to(torch.int32)
+        else:
+            position_ids = (
+                torch.arange(T_in, device=inputs.device)
+                .unsqueeze(0)
+                .expand(inputs.shape[0], T_in)
+                .to(torch.int32)
+            )
+
+        output = model(
+            inputs=inputs,
+            labels=targets,
+            position_ids=position_ids,
+            cu_seqlens=cu_seqlens,
+        )
+
+        loss = output.loss
+        if loss is None:
+            raise RuntimeError("evaluate(): output.loss is None — did you pass labels?")
+
+        total_loss += float(loss.detach().float().item())
+        total_batches += 1
+        # plotting 
+        if plot and plot_path is not None and bidx == plot_bidx :
+            dataset = val_loader.dataset
+            pred_phys = dataset.denormalize(output.logits)
+            truth_phys = dataset.denormalize(targets)
+                    
+            pred_phys = pred_phys.detach().float().cpu()[:,0,0,:,:]
+            truth_phys = truth_phys.detach().float().cpu()[:,0,0,:,:]
+            plot_geopotential_comparison(model_output=pred_phys,truth=truth_phys,lat=lat,lon=lon,timesteps=[0, 4, 8, 12],  # Plot specific timesteps
+                                                         save_path=plot_path,  # Set to filename to save
+                                                         vmin=vmin,
+                                                         vmax=vmax)
+
+
+    # Reduce across ranks (sum loss, sum batches)
+    if torch.distributed.is_available() and torch.distributed.is_initialized():
+        t = torch.tensor([total_loss, total_batches], device=inputs.device)
+        torch.distributed.all_reduce(t, op=torch.distributed.ReduceOp.SUM)
+        total_loss = float(t[0].item())
+        total_batches = int(t[1].item())
+
+    mean_loss = total_loss / max(total_batches, 1)
+    model.train()
+    return mean_loss
 
 register_train_spec(
     TrainSpec(
@@ -172,7 +355,7 @@ def main(job_config: JobConfig):
     
     # ----------------- Hgt dataloader -----------------
     logger.info("Building Hgt dataloader...")
-    dataloader = build_hgt_dataloader(
+    train_loader, val_loader, train_sampler, val_sampler, lat, lon, vmin, vmax = build_hgt_dataloader(
         job_config=job_config,
         rank=dp_rank,
         world_size=dp_degree,
@@ -210,7 +393,8 @@ def main(job_config: JobConfig):
     with torch.device("meta"):
         base_model = AutoModelForCausalLM.from_config(model_config)
         C, H, W = 1, 73, 144 # need to get from the data 
-        model = HGTModelWrapper(base_model,C=C, H=H, W=W)
+        T_out = job_config.training.target_len 
+        model = HGTModelWrapper(base_model, T_out=T_out, C=C, H=H, W=W)
         if (
             getattr(model_config, "fuse_linear_cross_entropy", False)
             and FusedLinearCrossEntropyLoss is not None
@@ -289,9 +473,23 @@ def main(job_config: JobConfig):
         f"({device_mem_stats.max_reserved_pct:.2f}%)"
     )
 
+    if hasattr(model, "model") and hasattr(model.model, "model") and hasattr(model.model.model, "embeddings"):
+        model.model.model.embeddings.weight.requires_grad_(False)
+
+    if hasattr(model, "model") and hasattr(model.model, "lm_head"):
+        for p in model.model.lm_head.parameters():
+            p.requires_grad_(False)
+
+    # If your wrapper exposes lm_head directly:
+    if hasattr(model, "lm_head"):
+        for p in model.lm_head.parameters():
+            p.requires_grad_(False)
     # build optimizer after applying parallelisms to the model
     optimizers = train_spec.build_optimizers_fn(model_parts, job_config, ft_manager)
     lr_schedulers = train_spec.build_lr_schedulers_fn(optimizers, job_config)
+
+    #debug_embeddings_optimizer_state(model, optimizers, tag="after_optimizer_build")
+    #print(ttttt)
     # Post optimizer step model converters hook.
     # e.g. calculate float8 dynamic amax/scale for all-parameter for FSDP2
     # where it issues a single all-reduce for all parameters at once for better performance
@@ -305,8 +503,8 @@ def main(job_config: JobConfig):
     checkpoint = CheckpointManager(
         dataloader=None, #dataloader,
         model_parts=model_parts,
-        optimizers=None, #optimizers,
-        lr_schedulers=None, #lr_schedulers,
+        optimizers=optimizers,
+        lr_schedulers=lr_schedulers,
         states={"train_state": train_state},
         job_config=job_config,
         ft_manager=ft_manager,
@@ -323,7 +521,35 @@ def main(job_config: JobConfig):
         logger.info("Created seed checkpoint")
         return
 
+    keys = ["proj.weight", "forecast_head.weight", "model.layers.0.attn.q_proj.weight"]
+    pre = {}
+    for k in keys:
+        pre[k] = checksum_named_param_local(model, k)
+
+    dist.barrier()  # keep ranks aligned
+    if dist.get_rank() == 0:
+        for k, (nme, h) in pre.items():
+            print(f"[DEBUG:pre_load] {k} -> {nme} hash={h}", flush=True)
+
     checkpoint.load(step=job_config.checkpoint.load_step)
+    
+    dist.barrier()
+
+    p = model.forecast_head.weight
+    has_state = (p in optimizers.state) and (len(optimizers.state[p]) > 0)
+    if dist.get_rank()==0:
+        print("optimizer has forecast_head state:", has_state, optimizers.state.get(p, {}).keys())
+
+    # --- POST ---
+    post = {}
+    for k in keys:
+        post[k] = checksum_named_param_local(model, k)
+
+    dist.barrier()
+    if dist.get_rank() == 0:
+        for k, (nme, h) in post.items():
+            print(f"[DEBUG:post_load] {k} -> {nme} hash={h}", flush=True)
+    
     metric_logger = build_metrics_processor(job_config, parallel_dims)
     # Set dependent attributes for metric_logger
     metric_logger.num_flops_per_token = num_flops_per_token
@@ -343,7 +569,7 @@ def main(job_config: JobConfig):
                 global_max_loss=train_state.global_max_losses[idx],
             )
 
-    data_iterator = iter(dataloader)
+    train_data_iterator = iter(train_loader)
 
     train_context = dist_utils.get_train_context(
         parallel_dims.loss_parallel_enabled,
@@ -415,6 +641,7 @@ def main(job_config: JobConfig):
     #    if "proj" in name or "forecast_head" in name:
     #        print("param", name, "requires_grad:", p.requires_grad)
     """
+    epoch = 0
     with (
         maybe_enable_profiling(
             job_config, global_step=train_state.step
@@ -434,7 +661,14 @@ def main(job_config: JobConfig):
             for _ in range(job_config.training.gradient_accumulation_steps):
                 # get batch
                 data_load_start = time.perf_counter()
-                batch = next(data_iterator)
+                try:
+                    batch = next(train_data_iterator)
+                except StopIteration:
+                    epoch += 1
+                    if train_sampler is not None:
+                        train_sampler.set_epoch(epoch)  # reshuffle each epoch across ranks
+                    train_data_iterator = iter(train_loader)
+                    batch = next(train_data_iterator)
                 inputs, targets = batch["inputs"], batch["targets"]
 
                 # Update metrics processor state before forward/backward
@@ -527,8 +761,7 @@ def main(job_config: JobConfig):
                         loss.backward()
 
                 losses.append(loss)
-            loss = sum(losses)
-    
+            loss = sum(losses) # this is for the summing of losses over the gradient accum - but this does not matter 
             with torch.no_grad():
                 if train_state.step % 100 == 0: 
                     print("labels stats:",
@@ -546,8 +779,24 @@ def main(job_config: JobConfig):
                     diff = output.logits - targets
                     const = targets.mean()
                     baseline_mse = ((targets - const) ** 2).mean().item()
+                    baseline_rmse = baseline_mse ** 0.5
                     logger.info(f"{color.red} rmse: {torch.sqrt((diff ** 2).mean()).item()} at trainstep : {train_state.step} ")
-                    logger.info(f"{color.red} mean-baseline MSE: {baseline_mse} at trainstep : {train_state.step} ")
+                    logger.info(f"{color.red} mean-baseline RMSE: {baseline_rmse} at trainstep : {train_state.step} ")
+            
+                if train_state.step % 250 == 0:
+                    f_path = job_config.job.dump_folder + "/plots/train_step_" + str(train_state.step) + ".png"
+                    with torch.no_grad():
+                        dataset = train_loader.dataset
+                        pred_phys = dataset.denormalize(output.logits)
+                        truth_phys = dataset.denormalize(targets)
+                    
+                        pred_phys = pred_phys.detach().float().cpu()[:,0,0,:,:]
+                        truth_phys = truth_phys.detach().float().cpu()[:,0,0,:,:]
+                        plot_geopotential_comparison(model_output=pred_phys,truth=truth_phys,lat=lat,lon=lon,timesteps=[0, 4, 8, 12],  # Plot specific timesteps
+                                                         save_path=f_path,  # Set to filename to save
+                                                         vmin=vmin,
+                                                         vmax=vmax)
+
             # clip gradients
             grad_norm = dist_utils.clip_grad_norm_(
                 [p for m in model_parts for p in m.parameters()],
@@ -572,12 +821,15 @@ def main(job_config: JobConfig):
 
             # log metrics - Use MetricsProcessor
             if metric_logger.should_log(train_state.step):
+                print(f"enabled : { parallel_dims.dp_replicate_enabled}, {parallel_dims.dp_shard_enabled,} {parallel_dims.cp_enabled}")
                 if (
                     parallel_dims.dp_replicate_enabled
                     or parallel_dims.dp_shard_enabled
                     or parallel_dims.cp_enabled
                 ):
                     loss = loss.detach()
+                    print(f"WM:{world_mesh["dp_cp"]}, loss:{loss}")
+                    
                     # Use dist_mean/max on the accumulated loss for the step
                     global_avg_loss, global_max_loss = (
                         dist_utils.dist_mean(
@@ -589,10 +841,11 @@ def main(job_config: JobConfig):
                             world_mesh["dp_cp"],
                         ),
                     )
+                    print(f"global_avg_loss:{global_avg_loss}, global_max_loss:{global_max_loss}")
+                    #print(tttt)
                 else:
                     # Scale back the loss before logging
                     global_avg_loss = global_max_loss = loss.item()
-
                 # Update train state tokens and elapsed time
                 time_now = time.perf_counter()
                 time_delta = (
@@ -627,7 +880,7 @@ def main(job_config: JobConfig):
                 )
 
                 logger.info(
-                    f"{color.blue}lr: {last_lr:.4e} gnorm: {grad_norm:5.2f} "
+                    f"{color.blue}lr: {last_lr:.4e} gnorm: {grad_norm:5.2f} loss:{loss.item()}"
                     f"{color.magenta}[{str(train_state.elapsed).split('.')[0]:>8}<{str(eta).split('.')[0]:>8}]{color.reset}"
                 )
             #logger.info(f"calling checkpoint save at train_state.step:{train_state.step},steps: {job_config.training.steps}")
@@ -635,6 +888,9 @@ def main(job_config: JobConfig):
             checkpoint.save(
                 train_state.step, force=(train_state.step == job_config.training.steps)
             )
+            if _rank0():
+                print("[DEBUG] model checksum before load:", model_checksum(model), flush=True)
+    
 
             # signal the profiler that the next profiling step has started
             if torch_profiler:
@@ -649,6 +905,16 @@ def main(job_config: JobConfig):
                     timeout=timedelta(seconds=job_config.comm.train_timeout_seconds),
                     world_mesh=world_mesh,
                 )
+            if train_state.step % 100 == 0: # add job_config.training.eval_interval == 0: and job_config.training.eval_max_batches
+                if train_state.step % 500 == 0:
+                    plot=True,
+                    plot_path=job_config.job.dump_folder + "/plots/val_step_" + str(train_state.step) + ".png"
+                else:
+                    plot=False
+                    plot_path = None
+                val_loss = evaluate(model, val_loader, plot, plot_path, device,lat, lon, vmin, vmax, max_batches=2)
+                if int(rank) == 0:
+                    logger.info(f"[eval] step {train_state.step} val_loss={val_loss:.6f}")
 
     if torch.distributed.get_rank() == 0:
         logger.info("Sleeping 2 seconds for other ranks to complete")

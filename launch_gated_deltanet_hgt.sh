@@ -22,7 +22,7 @@ source /eagle/datascience/vsastry/projects/LinearAttention/venvs/flame_env/bin/a
 #
 NNODE=$NHOSTS NGPU=$NGPU_PER_HOST LOG_RANK=0 bash train.sh \
 	  --job.config_file flame/models/fla.toml \
-	  --job.dump_folder exp/gated_deltanet-340M-hgt/ \
+	  --job.dump_folder exp/gated_deltanet-340M-hgt-test/ \
 	  --model.config configs/gated_deltanet_340M.json \
 	  --model.tokenizer_path fla-hub/delta_net-1.3B-100B \
 	  --optimizer.name AdamW \

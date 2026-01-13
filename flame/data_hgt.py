@@ -7,10 +7,26 @@ from typing import Sequence, Optional, Union
 import numpy as np
 import xarray as xr
 import torch
-from torch.utils.data import Dataset, DataLoader
+from torch.utils.data import Dataset, DataLoader, DistributedSampler
 from flame.config_manager import JobConfig
 from torchtitan.tools.logging import init_logger, logger
 import pdb
+
+means = np.array([   89.57868,   726.8976 ,  1410.4211 ,  2948.8853 ,  4140.5693 ,
+        5509.7495 ,  7128.5396 ,  9111.014  , 10317.388  , 11761.315  ,
+       13581.902  , 16087.761  , 18275.088  , 20361.256  , 23576.166  ,
+       26173.098  , 30699.953  ], dtype=float)
+stds = np.array([ 107.536415,  117.37903 ,  140.21944 ,  213.68188 ,  275.05136 ,
+        343.34845 ,  425.6921  ,  520.3599  ,  564.0767  ,  595.05    ,
+        602.211   ,  575.09674 ,  573.84155 ,  614.817   ,  726.8138  ,
+        835.1958  , 1049.6564  ], dtype=float)
+vmaxs = np.array([  790.,  1282.,  1864.,  3355.,  4615.,  6063.,  7778.,  9907.,
+       11215., 12756., 14629., 17085., 19169., 21322., 24764., 27524.,
+       32490.], dtype=float)
+vmins = np.array([-6.5500e+02, -2.2000e+01,  6.3400e+02,  2.0480e+03,  3.1350e+03,
+        4.3690e+03,  5.8310e+03,  7.6350e+03,  8.7370e+03,  1.0042e+04,
+        1.1685e+04,  1.3939e+04,  1.5909e+04,  1.7737e+04,  2.0386e+04,
+        2.2457e+04,  2.5908e+04], dtype=float)
 
 class HGTSpatioTemporalDataset(Dataset):
     """
@@ -28,6 +44,9 @@ class HGTSpatioTemporalDataset(Dataset):
             target_len: int,
             stride: int = 1,
             level: Optional[Union[int, Sequence[int]]] = None,
+            arr=None,
+            start_idx: int = 0,
+            end_idx: Optional[int] = None,
     ):
         """
         Parameters
@@ -48,9 +67,10 @@ class HGTSpatioTemporalDataset(Dataset):
         """
         super().__init__()
 
-        # Memory-map the big array so we don't load 80GB into RAM at once
-        arr = np.load(data_files, mmap_mode="r")  # (T, C, H, W) memmap or ndarray
-        print("done read")
+        if arr is None:
+            # Memory-map the big array so we don't load 80GB into RAM at once
+            arr = np.load(data_files, mmap_mode="r")  # (T, C, H, W) memmap or ndarray
+            print("done read")
         if arr.ndim != 4:
             raise ValueError(f"Expected array with 4 dims (T,C,H,W), got {arr.shape}")
         # Select channels/levels if requested
@@ -67,8 +87,10 @@ class HGTSpatioTemporalDataset(Dataset):
         #pdb.set_trace()
         #data_flat = self.data.reshape(-1)
         #mean: 11884.07 std: 9119.372
-        self.mean = 11884.07 #self.data.mean()
-        self.std = 9119.372 #self.data.std()
+        self.mean = means[level] #11884.07 #self.data.mean()
+        self.std = stds[level] #9119.372 #self.data.std()
+        self.max = vmaxs[level]
+        self.min = vmins[level]
         print("Normalization stats:")
         print(" mean:", self.mean)
         print(" std :", self.std)
@@ -85,12 +107,41 @@ class HGTSpatioTemporalDataset(Dataset):
                     f"Not enough time steps ({self.T_total}) for "
                     f"input_len={input_len} + target_len={target_len}"
             )
+        # NEW: window indexing / split support
+        self.num_windows_total = 1 + self.max_start // self.stride
+
+        if start_idx < 0 or start_idx >= self.num_windows_total:
+            raise ValueError(f"start_idx {start_idx} out of range [0, {self.num_windows_total})")
+
+        if end_idx is None:
+            end_idx = self.num_windows_total
+        if end_idx <= start_idx or end_idx > self.num_windows_total:
+            raise ValueError(f"end_idx {end_idx} out of range ({start_idx}, {self.num_windows_total}]")
+
+        self.start_idx = start_idx
+        self.end_idx = end_idx
+        self.num_windows = self.end_idx - self.start_idx
+
         
     def __len__(self) -> int:
         # number of windows with given stride
-        return 1 + self.max_start // self.stride
+        return self.num_windows #1 + self.max_start // self.stride
+
+    def normalize(self, x):
+        """
+        x: torch.Tensor or np.ndarray
+        """
+        return (x - self.mean) / self.std
+
+    def denormalize(self, x):
+        """
+        x: torch.Tensor or np.ndarray
+        """
+        return x * self.std + self.mean
          
     def __getitem__(self, idx: int):
+        idx = idx + self.start_idx
+
         t0 = idx * self.stride
         t1 = t0 + self.input_len
         t2 = t1 + self.target_len
@@ -140,25 +191,80 @@ def build_hgt_dataloader(
     levels = getattr(job_config.training, "levels", 7)
     years = getattr(job_config.training, "years", None)
     
+    val_frac = 0.1 # get this from config tbd
+    
+    arr = np.load(data_files, mmap_mode="r")
+    lat = np.load('utils/lat.npy') 
+    lon = np.load('utils/lon.npy')
+    vmin = vmins[int(levels)]
+    vmax = vmaxs[int(levels)]
+    # Compute number of windows total (no dataset needed)
+    T_total = arr.shape[0]
+    max_start = T_total - (input_len + target_len)
+    if max_start < 0:
+        raise ValueError(
+            f"Not enough time steps ({T_total}) for input_len={input_len} + target_len={target_len}"
+        )
+    num_windows_total = 1 + (max_start // stride)
+
+    split = int(num_windows_total * (1.0 - val_frac))
+
+
     print(f"get HGTSpatioTemporalDataset")
-    dataset = HGTSpatioTemporalDataset(
+    train_ds = HGTSpatioTemporalDataset(
         data_files=data_files,
+        arr=arr,
         input_len=input_len,
         target_len=target_len,
         stride=stride,
         level=int(levels),
+        start_idx=0,
+        end_idx=split,
     )
     
+    val_ds = HGTSpatioTemporalDataset(
+        data_files=data_files,
+        arr=arr,                    # share memmap
+        input_len=input_len,
+        target_len=target_len,
+        stride=stride,
+        level=int(levels),
+        start_idx=split,
+        end_idx=num_windows_total,
+    )
+    if world_size > 1:
+        train_sampler = DistributedSampler(train_ds, num_replicas=world_size, rank=rank, shuffle=True)
+        val_sampler = DistributedSampler(val_ds, num_replicas=world_size, rank=rank, shuffle=False)
+        shuffle_train = False
+    else:
+        train_sampler = None
+        val_sampler = None
+        shuffle_train = True
+
     print(f"get the dataloader")
-    dataloader = DataLoader(
-        dataset,
+    train_loader = DataLoader(
+        train_ds,
         batch_size=job_config.training.batch_size,
-        shuffle=True,
+        sampler=train_sampler,
+        shuffle=shuffle_train,
         num_workers=job_config.training.num_workers,
         pin_memory=True,
         persistent_workers=False,
+        drop_last=True,
     )
-    return dataloader
+
+    val_loader = DataLoader(
+        val_ds,
+        batch_size=job_config.training.batch_size,
+        sampler=val_sampler,
+        shuffle=False,
+        num_workers=job_config.training.num_workers,
+        pin_memory=True,
+        persistent_workers=(job_config.training.num_workers > 0),
+        drop_last=False,
+    )
+
+    return train_loader, val_loader, train_sampler, val_sampler, lat, lon, vmin, vmax #dataloader
 
 # ---------------------------------------------------------------------
 # Main: simple test of the dataloader
@@ -173,10 +279,10 @@ def main():
     rank = 0
     world_size = 1
 
-    loader = build_hgt_dataloader(job_config, rank, world_size)
-    
+    #loader = build_hgt_dataloader(job_config, rank, world_size)
+    train_loader, val_loader, train_sampler, _ = build_hgt_dataloader(job_config, rank, world_size) 
     logger.info("Iterating over a few batches from HGT dataloader...")
-    for i, batch in enumerate(loader):
+    for i, batch in enumerate(train_loader):
         x = batch["inputs"]   # (B, T_in, C, H, W)
         y = batch["targets"]  # (B, T_out, C, H, W)
 

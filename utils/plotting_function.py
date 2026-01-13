@@ -1,8 +1,9 @@
 import numpy as np
+import os
 import matplotlib.pyplot as plt
 import cartopy.crs as ccrs
 import cartopy.feature as cfeature
-
+import pdb
 def plot_geopotential_comparison(model_output, truth, lat, lon, 
                                   timesteps=None, save_path=None, 
                                   vmin=-300, vmax=300):
@@ -99,6 +100,7 @@ def plot_geopotential_comparison(model_output, truth, lat, lon,
     plt.tight_layout()
     
     if save_path:
+        os.makedirs(os.path.dirname(save_path), exist_ok=True)
         plt.savefig(save_path, dpi=150, bbox_inches='tight')
         print(f"Figure saved to {save_path}")
     else:
@@ -112,12 +114,16 @@ if __name__ == "__main__":
     from netCDF4 import Dataset
     
     # Load data
-    netcdfloc = "hgt.2024.nc"
+    netcdfloc = "/eagle/datascience/vsastry/projects/LatentTwinShared/hgt.2024.nc"
     ds = Dataset(netcdfloc)
     lat = ds.variables['lat'][:]
     lon = ds.variables['lon'][:]
+    lat = lat.filled(np.nan)
+    lon = lon.filled(np.nan)
+    np.save("lat.npy", lat)
+    np.save("lon.npy",lon)
+    pdb.set_trace() 
     hgt = np.array(ds.variables['hgt'][:, 0, :, :])
-    
     # Simulate model output (you would replace this with actual model predictions)
     model_output = hgt + np.random.randn(*hgt.shape) * 20  # Add some noise
     
