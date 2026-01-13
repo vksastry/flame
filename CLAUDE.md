@@ -8,6 +8,13 @@ Flame is a minimal, efficient distributed training framework for Large Language 
 
 **Key features:** Online tokenization, dataset shuffling, variable-length sequence packing, multi-dataset support, 4D parallelism.
 
+## Virtual Environment
+
+A virtual environment is set up at `venv/`. To activate:
+```bash
+source venv/bin/activate
+```
+
 ## Common Commands
 
 ### Installation
@@ -15,20 +22,27 @@ Flame is a minimal, efficient distributed training framework for Large Language 
 pip install .
 pip uninstall flash-linear-attention && pip install -U --no-use-pep517 git+https://github.com/fla-org/flash-linear-attention
 pip install git+https://github.com/pytorch/torchtitan.git@0b44d4c
+pip install mpi4py tyro  # Required for MPI-based training
 ```
 
 ### Training
+
+The `train.sh` script uses MPI (`mpiexec`) for distributed training:
 ```bash
-# Single GPU debugging
-NGPU=1 bash train.sh --job.config_file flame/models/fla.toml --model.config configs/transformer_340M.json ...
+# Multi-GPU with MPI (default 4 GPUs)
+mpiexec -np 4 python -m flame.train --job.config_file flame/models/fla.toml --model.config configs/gla_340M.json ...
 
-# Multi-GPU (default 4)
-bash train.sh --job.config_file flame/models/fla.toml --model.config configs/gla_340M.json ...
+# Or use train.sh wrapper
+NGPU=4 bash train.sh --job.config_file flame/models/fla.toml --model.config configs/gla_340M.json ...
+```
 
-# Custom GPU count
-NGPU=8 bash train.sh ...
+### Slurm Job Submission
+```bash
+# Single GPU job
+sbatch flame_train.job
 
-# Multi-node: set MASTER_ADDR and MASTER_PORT environment variables
+# Multi-GPU job (4 GPUs)
+sbatch flame_multigpu.job
 ```
 
 ### Linting
@@ -40,6 +54,15 @@ Uses isort (import sorting) and flake8 (max line length: 127).
 ### Alternative Training Scripts
 - `flame.train` - Standard LLM training
 - `flame.train_hgt` - HGT (Heterogeneous Graph Transformer) experiments
+
+### Checkpoint Testing
+```bash
+# Run training with checkpoints (no MPI required)
+python test_checkpoint.py --clean --steps 10 --checkpoint_interval 5 --model_config configs/gla_340M.json
+
+# Resume from checkpoint
+python test_checkpoint.py --resume --steps 15 --model_config configs/gla_340M.json
+```
 
 ### Help
 ```bash
@@ -87,6 +110,16 @@ Entry point that orchestrates: config loading → model building (AutoModelForCa
 
 Configs in `configs/`: Transformer, GLA, Mamba, DeltaNet, Gated DeltaNet, GSA, HGRN2, KDA, Samba. Launch scripts: `launch_*.sh`.
 
+**Note:** FLA model types (gla, transformer, delta_net, etc.) must be registered with transformers before use. Import `fla` first, then register:
+```python
+import fla
+from fla.models import GLAConfig, GLAForCausalLM
+from transformers import AutoConfig, AutoModelForCausalLM
+AutoConfig.register('gla', GLAConfig)
+AutoModelForCausalLM.register(GLAConfig, GLAForCausalLM)
+```
+The `transformer` model type requires `flash-attn` package. GLA models work without it.
+
 ## Custom Models
 
 Add models under `custom_models/` (see `custom_models/sba/` for example):
@@ -109,3 +142,5 @@ Add models under `custom_models/` (see `custom_models/sba/` for example):
 - transformers ≥4.45.0
 - fla (flash-linear-attention)
 - torchtitan (specific commit: 0b44d4c)
+- mpi4py (for MPI-based distributed training)
+- tyro (config parsing)
