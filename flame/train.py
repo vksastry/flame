@@ -15,12 +15,26 @@ import torch
 comm = MPI.COMM_WORLD
 rank = comm.Get_rank()
 size = comm.Get_size()
-local_rank = rank % torch.cuda.device_count() 
-os.environ['RANK']=str(rank)
-os.environ['WORLD_SIZE']=str(size)
-master_addr = "localhost"
-master_port = "29500"
+
+# For multi-node: local_rank should be set by the affinity script via LOCAL_RANK env var
+# or computed from PMI_LOCAL_RANK. When CUDA_VISIBLE_DEVICES is set to a single GPU,
+# we should use device 0.
+if "LOCAL_RANK" in os.environ:
+    local_rank = int(os.environ["LOCAL_RANK"])
+elif "PMI_LOCAL_RANK" in os.environ:
+    local_rank = int(os.environ["PMI_LOCAL_RANK"])
+else:
+    # Fallback for single-node: compute from total GPUs
+    local_rank = rank % torch.cuda.device_count()
+
+os.environ['RANK'] = str(rank)
+os.environ['WORLD_SIZE'] = str(size)
 os.environ["LOCAL_RANK"] = str(local_rank)
+
+# For multi-node: MASTER_ADDR must be set externally (e.g., in PBS job script)
+# Default to localhost for single-node
+master_addr = os.environ.get("MASTER_ADDR", "localhost")
+master_port = os.environ.get("MASTER_PORT", "29500")
 os.environ["MASTER_ADDR"] = master_addr
 os.environ["MASTER_PORT"] = master_port
 
@@ -64,7 +78,7 @@ print("PYTHON TMPDIR:", os.environ.get("TMPDIR"))
 print("CWD:", os.getcwd())
 print("MP start method:", mp.get_start_method(allow_none=True))
 
-exit 
+
 def build_tokenizer(job_config: JobConfig) -> AutoTokenizer:
     return AutoTokenizer.from_pretrained(job_config.model.tokenizer_path)
 
@@ -106,7 +120,18 @@ def main(job_config: JobConfig):
 
     device_module, device_type = utils.device_module, utils.device_type
     print(device_type)
-    device = torch.device(f"{device_type}:{int(rank)}")
+    # When CUDA_VISIBLE_DEVICES restricts to a single GPU, use device 0
+    # Otherwise use local_rank
+    if "CUDA_VISIBLE_DEVICES" in os.environ:
+        visible_devices = os.environ["CUDA_VISIBLE_DEVICES"].split(",")
+        if len(visible_devices) == 1:
+            device_id = 0  # Only one GPU visible
+        else:
+            device_id = local_rank % len(visible_devices)
+    else:
+        device_id = local_rank
+    device = torch.device(f"{device_type}:{device_id}")
+    logger.info(f"Rank {rank}, local_rank {local_rank}, using device {device}")
     # Device has to be set before creating TorchFT manager.
     device_module.set_device(device)
     ft_manager = init_ft_manager(job_config)
