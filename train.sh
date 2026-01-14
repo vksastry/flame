@@ -119,7 +119,8 @@ export PYTORCH_CUDA_ALLOC_CONF="expandable_segments:True"
 PYTORCH_CUDA_ALLOC_CONF="expandable_segments:True" \
 source /lus/eagle/projects/datascience/vsastry/projects/LinearAttention/venvs/flame_env/bin/activate
 #mpiexec -np 1 -ppn 4 python -m flame.train_hgt $params 
-mpiexec -np 4 -ppn 4 python -m flame.train_hgt $params | tee $log_file 
+mpiexec -np 4 -ppn 4 python -m flame.train_hgt $params > $log_file 2>&1
+#mpiexec -np 4 -ppn 4 python -m flame.train_hgt $params | tee $log_file 
 
 echo "TRAINING DONE!"
 echo "Converting the DCP checkpoints to HF format..."

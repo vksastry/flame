@@ -20,13 +20,15 @@ size = comm.Get_size()
 local_rank = rank % torch.cuda.device_count() 
 os.environ['RANK']=str(rank)
 os.environ['WORLD_SIZE']=str(size)
-master_addr = "localhost"
+#master_addr = "localhost"
+master_addr = socket.gethostname() if rank == 0 else None
+master_addr = comm.bcast(master_addr, root=0)
 master_port = "29500"
 os.environ["LOCAL_RANK"] = str(local_rank)
 os.environ["MASTER_ADDR"] = master_addr
 os.environ["MASTER_PORT"] = master_port
 
-print("Hello World from rank {} of {} on {}".format(rank, size, socket.gethostname()))
+print("Hello World from rank {} of {} and localrank {} on {}".format(rank, size, local_rank, socket.gethostname()))
 #os.environ['WANDB_MODE'] = 'disabled'
 import fla  # noqa
 from fla.modules.fused_linear_cross_entropy import FusedLinearCrossEntropyLoss
@@ -291,7 +293,7 @@ def main(job_config: JobConfig):
     gc_handler = utils.GarbageCollection(gc_freq=job_config.training.gc_freq)
 
     device_module, device_type = utils.device_module, utils.device_type
-    device = torch.device(f"{device_type}:{int(rank)}")
+    device = torch.device(f"{device_type}:{int(local_rank)}")
     # Device has to be set before creating TorchFT manager.
     device_module.set_device(device)
     ft_manager = init_ft_manager(job_config)
@@ -531,6 +533,7 @@ def main(job_config: JobConfig):
         # Reinit forecast_head too (good idea)
         torch.nn.init.xavier_uniform_(model.forecast_head.weight)
         torch.nn.init.zeros_(model.forecast_head.bias)
+    
     keys = ["proj.weight", "forecast_head.weight", "model.layers.0.attn.q_proj.weight"]
     pre = {}
     for k in keys:
@@ -540,7 +543,7 @@ def main(job_config: JobConfig):
     if dist.get_rank() == 0:
         for k, (nme, h) in pre.items():
             print(f"[DEBUG:pre_load] {k} -> {nme} hash={h}", flush=True)
-
+    
     checkpoint.load(step=job_config.checkpoint.load_step)
     
     dist.barrier()
@@ -764,7 +767,7 @@ def main(job_config: JobConfig):
                 losses.append(loss)
             loss = sum(losses) # this is for the summing of losses over the gradient accum - but this does not matter 
             with torch.no_grad():
-                if train_state.step % 100 == 0: 
+                if train_state.step % 500 == 0: 
                     print("labels stats:",
                         targets.mean().item(),
                         targets.std().item(),
@@ -822,14 +825,14 @@ def main(job_config: JobConfig):
 
             # log metrics - Use MetricsProcessor
             if metric_logger.should_log(train_state.step):
-                print(f"enabled : { parallel_dims.dp_replicate_enabled}, {parallel_dims.dp_shard_enabled,} {parallel_dims.cp_enabled}")
+                #print(f"enabled : { parallel_dims.dp_replicate_enabled}, {parallel_dims.dp_shard_enabled,} {parallel_dims.cp_enabled}")
                 if (
                     parallel_dims.dp_replicate_enabled
                     or parallel_dims.dp_shard_enabled
                     or parallel_dims.cp_enabled
                 ):
                     loss = loss.detach()
-                    print(f"WM:{world_mesh["dp_cp"]}, loss:{loss}")
+                    #print(f"WM:{world_mesh["dp_cp"]}, loss:{loss}")
                     
                     # Use dist_mean/max on the accumulated loss for the step
                     global_avg_loss, global_max_loss = (
@@ -842,8 +845,7 @@ def main(job_config: JobConfig):
                             world_mesh["dp_cp"],
                         ),
                     )
-                    print(f"global_avg_loss:{global_avg_loss}, global_max_loss:{global_max_loss}")
-                    #print(tttt)
+                    #print(f"global_avg_loss:{global_avg_loss}, global_max_loss:{global_max_loss}")
                 else:
                     # Scale back the loss before logging
                     global_avg_loss = global_max_loss = loss.item()
