@@ -872,15 +872,28 @@ def main(job_config: JobConfig):
                     * (job_config.training.steps - train_state.step)
                     / train_state.step
                 )
+                extra_metrics={
+                        "optimizer/lr": last_lr,
+                        "optimizer/grad_norm": grad_norm.item(),
+                        "optimizer/skipped_step": train_state.skipped_step,
+                    }
+                if train_state.step % 10 == 0: # add job_config.training.eval_interval == 0: and job_config.training.eval_max_batches
+                    if train_state.step % 500 == 0:
+                        plot=True,
+                        plot_path=job_config.job.dump_folder + "/plots/val_step_" + str(train_state.step) + ".png"
+                    else:
+                        plot=False
+                        plot_path = None
+                    val_loss = evaluate(model, val_loader, plot, plot_path, device,lat, lon, vmin, vmax, max_batches=2)
+                    extra_metrics["loss_metrics/val_avg_loss"] = val_loss
+                    if int(rank) == 0:
+                        logger.info(f"[eval] step {train_state.step} val_loss={val_loss:.6f}")
+                
                 metric_logger.log(
                     train_state.step,
                     global_avg_loss,
                     global_max_loss,
-                    extra_metrics={
-                        "optimizer/lr": last_lr,
-                        "optimizer/grad_norm": grad_norm.item(),
-                        "optimizer/skipped_step": train_state.skipped_step,
-                    },
+                    extra_metrics=extra_metrics,
                 )
 
                 logger.info(
@@ -909,16 +922,6 @@ def main(job_config: JobConfig):
                     timeout=timedelta(seconds=job_config.comm.train_timeout_seconds),
                     world_mesh=world_mesh,
                 )
-            if train_state.step % 100 == 0: # add job_config.training.eval_interval == 0: and job_config.training.eval_max_batches
-                if train_state.step % 500 == 0:
-                    plot=True,
-                    plot_path=job_config.job.dump_folder + "/plots/val_step_" + str(train_state.step) + ".png"
-                else:
-                    plot=False
-                    plot_path = None
-                val_loss = evaluate(model, val_loader, plot, plot_path, device,lat, lon, vmin, vmax, max_batches=2)
-                if int(rank) == 0:
-                    logger.info(f"[eval] step {train_state.step} val_loss={val_loss:.6f}")
 
     if torch.distributed.get_rank() == 0:
         logger.info("Sleeping 2 seconds for other ranks to complete")
