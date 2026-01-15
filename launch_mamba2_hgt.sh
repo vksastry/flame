@@ -25,8 +25,8 @@ echo $NGPU_PER_HOST
  
 NNODE=$NHOSTS NGPU=$NGPU_PER_HOST LOG_RANK=0 bash train_multi.sh \
 	  --job.config_file flame/models/fla.toml \
-	  --job.dump_folder exp/kda-340M-hgt-run/ \
-	  --model.config configs/kda_340M.json \
+	  --job.dump_folder exp/mamba2-340M-hgt-run/ \
+	  --model.config configs/mamba2_340M.json \
 	  --model.tokenizer_path fla-hub/delta_net-1.3B-100B \
 	  --optimizer.name AdamW \
 	  --optimizer.eps 1e-15 \

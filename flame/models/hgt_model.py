@@ -110,9 +110,9 @@ class HGTModelWrapper(nn.Module):
         return CausalLMOutputWithPast(
             loss=loss,
             logits=logits,
-            past_key_values=output.past_key_values,
+            #past_key_values=output.past_key_values,
             hidden_states=output.hidden_states,
-            attentions=output.attentions,
+            #attentions=output.attentions,
         )
 
 

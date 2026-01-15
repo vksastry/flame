@@ -50,6 +50,7 @@ from torchtitan.tools.profiling import maybe_enable_memory_snapshot, maybe_enabl
 from transformers import AutoConfig, AutoModelForCausalLM, AutoTokenizer
 from flame.data_hgt import build_hgt_dataloader
 import custom_models
+import logging
 from flame.components.checkpoint import TrainState
 from flame.config_manager import JobConfig
 from flame.data import build_dataloader, build_dataset
@@ -929,6 +930,10 @@ def main(job_config: JobConfig):
 
 if __name__ == "__main__":
     init_logger()
+    if rank > 0:
+        logger.setLevel(logging.WARNING)
+        os.environ["WANDB_DISABLED"] = "true"
+        os.environ["WANDB_MODE"] = "disabled"
     config = JobConfig()
     config.parse_args()
     main(config)

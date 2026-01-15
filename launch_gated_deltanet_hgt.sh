@@ -9,20 +9,43 @@ GLOBAL_BATCH_SIZE="$((${NGPUS}*${BS}))"
 echo "GLobal BS : $GLOBAL_BATCH_SIZE"
 STEPS_PER_EPOCH=$(( (SAMPLES + GLOBAL_BATCH_SIZE - 1) / GLOBAL_BATCH_SIZE ))
 echo "Steps per epoch: $STEPS_PER_EPOCH"
-NEPOCHS=15
+NEPOCHS=50
 T_STEPS="$((${STEPS_PER_EPOCH}*${NEPOCHS}))"
 echo "Steps number: $T_STEPS"
+
 cd /eagle/datascience/vsastry/projects/LinearAttention/new_repo/flame 
 module use /soft/modulefiles; module load conda; conda activate base
 source /eagle/datascience/vsastry/projects/LinearAttention/venvs/flame_env/bin/activate
+
+export http_proxy=http://proxy.tmi.alcf.anl.gov:3128
+export https_proxy=http://proxy.tmi.alcf.anl.gov:3128
+
+# proxy settings
+export HTTP_PROXY="http://proxy.alcf.anl.gov:3128"
+export HTTPS_PROXY="http://proxy.alcf.anl.gov:3128"
+export http_proxy="http://proxy.alcf.anl.gov:3128"
+export https_proxy="http://proxy.alcf.anl.gov:3128"
+export ftp_proxy="http://proxy.alcf.anl.gov:3128"
+
+echo "========== Proxy environment =========="
+env | grep -i proxy || echo "No proxy variables set"
+
+echo "========== WANDB connectivity check =========="
+if curl -Is https://api.wandb.ai --max-time 10 > /dev/null 2>&1; then
+    echo "WANDB connectivity: OK"
+else
+    echo "WANDB connectivity: FAILED"
+    exit 0  
+fi
+echo "======================================="
 # Calculate the ceiling using pure bash integer arithmetic
 # STEPS_PER_EPOCH=$(( (SAMPLES + BATCH_SIZE - 1) / BATCH_SIZE ))
 #
 # echo "Steps per epoch: $STEPS_PER_EPOCH"
 #
-NNODE=$NHOSTS NGPU=$NGPU_PER_HOST LOG_RANK=0 bash train.sh \
+NNODE=$NHOSTS NGPU=$NGPU_PER_HOST LOG_RANK=0 bash train_multi.sh \
 	  --job.config_file flame/models/fla.toml \
-	  --job.dump_folder exp/gated_deltanet-340M-hgt-test/ \
+	  --job.dump_folder exp/gated_deltanet-340M-hgt-run/ \
 	  --model.config configs/gated_deltanet_340M.json \
 	  --model.tokenizer_path fla-hub/delta_net-1.3B-100B \
 	  --optimizer.name AdamW \
