@@ -479,6 +479,9 @@ def main(job_config: JobConfig):
     if hasattr(model, "model") and hasattr(model.model, "model") and hasattr(model.model.model, "embeddings"):
         model.model.model.embeddings.weight.requires_grad_(False)
 
+    if hasattr(model, "model") and hasattr(model.model, "backbone") and hasattr(model.model.backbone, "embeddings"):
+        model.model.backbone.embeddings.weight.requires_grad_(False)
+    
     if hasattr(model, "model") and hasattr(model.model, "lm_head"):
         for p in model.model.lm_head.parameters():
             p.requires_grad_(False)
