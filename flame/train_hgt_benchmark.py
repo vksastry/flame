@@ -50,16 +50,16 @@ os.environ["MASTER_PORT"] = master_port
 
 def parse_bench_args(args_list: list[str]) -> tuple[argparse.Namespace, list[str]]:
     parser = argparse.ArgumentParser(add_help=False)
-    parser.add_argument("--bench.input_len", type=int, default=16)
-    parser.add_argument("--bench.target_len", type=int, default=1)
-    parser.add_argument("--bench.channels", type=int, default=1)
-    parser.add_argument("--bench.height", type=int, default=73)
-    parser.add_argument("--bench.width", type=int, default=144)
-    parser.add_argument("--bench.num_samples", type=int, default=10000)
-    parser.add_argument("--bench.val_num_samples", type=int, default=1000)
-    parser.add_argument("--bench.warmup_steps", type=int, default=10)
-    parser.add_argument("--bench.bench_steps", type=int, default=50)
-    parser.add_argument("--bench.seed", type=int, default=0)
+    parser.add_argument("--bench.input_len", dest="bench_input_len", type=int, default=16)
+    parser.add_argument("--bench.target_len", dest="bench_target_len", type=int, default=1)
+    parser.add_argument("--bench.channels", dest="bench_channels", type=int, default=1)
+    parser.add_argument("--bench.height", dest="bench_height", type=int, default=73)
+    parser.add_argument("--bench.width", dest="bench_width", type=int, default=144)
+    parser.add_argument("--bench.num_samples", dest="bench_num_samples", type=int, default=10000)
+    parser.add_argument("--bench.val_num_samples", dest="bench_val_num_samples", type=int, default=1000)
+    parser.add_argument("--bench.warmup_steps", dest="bench_warmup_steps", type=int, default=10)
+    parser.add_argument("--bench.bench_steps", dest="bench_bench_steps", type=int, default=50)
+    parser.add_argument("--bench.seed", dest="bench_seed", type=int, default=0)
     bench_args, remaining = parser.parse_known_args(args_list)
     return bench_args, remaining
 
@@ -145,14 +145,14 @@ def main(job_config: JobConfig, bench_args: argparse.Namespace) -> None:
         job_config=job_config,
         rank=dp_rank,
         world_size=dp_degree,
-        input_len=bench_args.input_len,
-        target_len=bench_args.target_len,
-        channels=bench_args.channels,
-        height=bench_args.height,
-        width=bench_args.width,
-        num_samples=bench_args.num_samples,
-        val_num_samples=bench_args.val_num_samples,
-        seed=bench_args.seed,
+        input_len=bench_args.bench_input_len,
+        target_len=bench_args.bench_target_len,
+        channels=bench_args.bench_channels,
+        height=bench_args.bench_height,
+        width=bench_args.bench_width,
+        num_samples=bench_args.bench_num_samples,
+        val_num_samples=bench_args.bench_val_num_samples,
+        seed=bench_args.bench_seed,
     )
 
     logger.info(f"Loading model config from {job_config.model.config}")
@@ -169,10 +169,10 @@ def main(job_config: JobConfig, bench_args: argparse.Namespace) -> None:
         base_model = AutoModelForCausalLM.from_config(model_config)
         model = HGTModelWrapper(
             base_model,
-            T_out=bench_args.target_len,
-            C=bench_args.channels,
-            H=bench_args.height,
-            W=bench_args.width,
+            T_out=bench_args.bench_target_len,
+            C=bench_args.bench_channels,
+            H=bench_args.bench_height,
+            W=bench_args.bench_width,
         )
         model.apply(lambda m: setattr(m, "_is_hf_initialized", False))
 
@@ -211,13 +211,13 @@ def main(job_config: JobConfig, bench_args: argparse.Namespace) -> None:
         * dp_degree
         * job_config.training.gradient_accumulation_steps
     )
-    tokens_per_step = global_batch_size * bench_args.input_len
+    tokens_per_step = global_batch_size * bench_args.bench_input_len
 
     if _rank0():
         logger.info(
             "Benchmark settings: "
-            f"input_len={bench_args.input_len}, target_len={bench_args.target_len}, "
-            f"C={bench_args.channels}, H={bench_args.height}, W={bench_args.width}, "
+            f"input_len={bench_args.bench_input_len}, target_len={bench_args.bench_target_len}, "
+            f"C={bench_args.bench_channels}, H={bench_args.bench_height}, W={bench_args.bench_width}, "
             f"batch_size={job_config.training.batch_size}, grad_accum={job_config.training.gradient_accumulation_steps}"
         )
         logger.info(f"Parameters: {model_param_count:,}")
@@ -277,15 +277,15 @@ def main(job_config: JobConfig, bench_args: argparse.Namespace) -> None:
                 optimizers.step()
             lr_schedulers.step()
 
-    if bench_args.warmup_steps > 0:
+    if bench_args.bench_warmup_steps > 0:
         if _rank0():
-            logger.info(f"Warmup: {bench_args.warmup_steps} steps")
-        run_steps(bench_args.warmup_steps)
+            logger.info(f"Warmup: {bench_args.bench_warmup_steps} steps")
+        run_steps(bench_args.bench_warmup_steps)
 
     torch.distributed.barrier()
     _maybe_sync(device_type)
     start = time.perf_counter()
-    run_steps(bench_args.bench_steps)
+    run_steps(bench_args.bench_bench_steps)
     _maybe_sync(device_type)
     torch.distributed.barrier()
     elapsed = time.perf_counter() - start
@@ -295,7 +295,7 @@ def main(job_config: JobConfig, bench_args: argparse.Namespace) -> None:
         torch.distributed.all_reduce(elapsed_tensor, op=torch.distributed.ReduceOp.MAX)
         elapsed = float(elapsed_tensor.item())
 
-    steps_per_sec = bench_args.bench_steps / max(elapsed, 1e-9)
+    steps_per_sec = bench_args.bench_bench_steps / max(elapsed, 1e-9)
     tokens_per_sec = steps_per_sec * tokens_per_step
 
     if _rank0():
@@ -303,17 +303,17 @@ def main(job_config: JobConfig, bench_args: argparse.Namespace) -> None:
         logger.info(f"Steps/sec: {steps_per_sec:.2f}")
         logger.info(f"Tokens/sec: {tokens_per_sec:.2f}")
         summary = {
-            "steps": bench_args.bench_steps,
+            "steps": bench_args.bench_bench_steps,
             "elapsed_seconds": elapsed,
             "steps_per_sec": steps_per_sec,
             "tokens_per_sec": tokens_per_sec,
             "tokens_per_step": tokens_per_step,
             "global_batch_size": global_batch_size,
-            "input_len": bench_args.input_len,
-            "target_len": bench_args.target_len,
-            "channels": bench_args.channels,
-            "height": bench_args.height,
-            "width": bench_args.width,
+            "input_len": bench_args.bench_input_len,
+            "target_len": bench_args.bench_target_len,
+            "channels": bench_args.bench_channels,
+            "height": bench_args.bench_height,
+            "width": bench_args.bench_width,
             "model_params": model_param_count,
         }
         os.makedirs(job_config.job.dump_folder, exist_ok=True)
@@ -328,10 +328,10 @@ if __name__ == "__main__":
     bench_args, remaining_args = parse_bench_args(sys.argv[1:])
     config = JobConfig()
     config.parse_args(remaining_args)
-    config.training.seq_len = bench_args.input_len
-    config.training.context_len = bench_args.input_len
-    config.training.steps = bench_args.warmup_steps + bench_args.bench_steps
-    setattr(config.training, "input_len", bench_args.input_len)
-    setattr(config.training, "target_len", bench_args.target_len)
+    config.training.seq_len = bench_args.bench_input_len
+    config.training.context_len = bench_args.bench_input_len
+    config.training.steps = bench_args.bench_warmup_steps + bench_args.bench_bench_steps
+    setattr(config.training, "input_len", bench_args.bench_input_len)
+    setattr(config.training, "target_len", bench_args.bench_target_len)
     main(config, bench_args)
     torch.distributed.destroy_process_group()
