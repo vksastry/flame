@@ -7,7 +7,7 @@ usage() {
 Usage: bench_train_pp.sh
 
 Notes:
-  - Runs single-GPU training via flame.train across configs and input lengths
+  - Runs single-GPU random-token benchmark via flame.train_benchmark
   - Enables pipeline parallelism for input_len >= 10000
 
 Optional env vars:
@@ -15,10 +15,7 @@ Optional env vars:
   BATCH_SIZE (default: 8)
   TRAIN_STEPS (default: 50)
   NUM_WORKERS (default: 0)
-  DATASET (default: HuggingFaceFW/fineweb-edu)
-  DATASET_NAME (default: empty)
-  DATASET_SPLIT (default: empty)
-  DATA_FILES (default: empty)
+  VOCAB_SIZE (default: model config vocab_size)
   PP_DEGREE (default: 4)
   PP_SPLIT_POINTS (default: empty)
   PP_MICROBATCHES (default: empty)
@@ -34,10 +31,7 @@ BASE_DUMP_DIR=${BASE_DUMP_DIR:-./train_out}
 BATCH_SIZE=${BATCH_SIZE:-8}
 TRAIN_STEPS=${TRAIN_STEPS:-50}
 NUM_WORKERS=${NUM_WORKERS:-0}
-DATASET=${DATASET:-HuggingFaceFW/fineweb-edu}
-DATASET_NAME=${DATASET_NAME:-}
-DATASET_SPLIT=${DATASET_SPLIT:-}
-DATA_FILES=${DATA_FILES:-}
+VOCAB_SIZE=${VOCAB_SIZE:-}
 PP_DEGREE=${PP_DEGREE:-4}
 PP_SPLIT_POINTS=${PP_SPLIT_POINTS:-}
 PP_MICROBATCHES=${PP_MICROBATCHES:-}
@@ -52,6 +46,18 @@ CONFIGS=(
 )
 
 INPUT_LENS=(10 100 1000 10000 100000 1000000)
+
+python -m flame.train_benchmark \
+  --model.config "configs/transformer_340M.json" \
+  --job.dump_folder "${BASE_DUMP_DIR}/transformer_340M/len_100000_cp_tp" \
+  --training.batch_size 1 \
+  --training.num_workers "${NUM_WORKERS}" \
+  --training.seq_len 100000 \
+  --training.context_len 100000 \
+  --training.steps 5 \
+  --experimental.context_parallel_degree 4 \
+  --training.tensor_parallel_degree 1 \
+  --experimental.pipeline_parallel_degree 1
 
 for MODEL_CONFIG in "${CONFIGS[@]}"; do
   MODEL_NAME=$(basename "${MODEL_CONFIG}" .json)
@@ -69,18 +75,12 @@ for MODEL_CONFIG in "${CONFIGS[@]}"; do
       fi
     fi
 
-    DATASET_ARGS=("--training.dataset" "${DATASET}")
-    if [[ -n ${DATASET_NAME} ]]; then
-      DATASET_ARGS+=("--training.dataset_name" "${DATASET_NAME}")
-    fi
-    if [[ -n ${DATASET_SPLIT} ]]; then
-      DATASET_ARGS+=("--training.dataset_split" "${DATASET_SPLIT}")
-    fi
-    if [[ -n ${DATA_FILES} ]]; then
-      DATASET_ARGS+=("--training.data_files" "${DATA_FILES}")
+    BENCH_ARGS=()
+    if [[ -n ${VOCAB_SIZE} ]]; then
+      BENCH_ARGS+=("--bench.vocab_size" "${VOCAB_SIZE}")
     fi
 
-    python -m flame.train \
+    python -m flame.train_benchmark \
       --model.config "${MODEL_CONFIG}" \
       --job.dump_folder "${RUN_DIR}" \
       --training.batch_size "${BATCH_SIZE}" \
@@ -88,7 +88,7 @@ for MODEL_CONFIG in "${CONFIGS[@]}"; do
       --training.seq_len "${INPUT_LEN}" \
       --training.context_len "${INPUT_LEN}" \
       --training.steps "${TRAIN_STEPS}" \
-      "${DATASET_ARGS[@]}" \
+      "${BENCH_ARGS[@]}" \
       "${EXTRA_PP_ARGS[@]}"
   done
 done
