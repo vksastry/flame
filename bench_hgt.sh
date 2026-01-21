@@ -35,6 +35,7 @@ CHANNELS=${CHANNELS:-1}
 HEIGHT=${HEIGHT:-73}
 WIDTH=${WIDTH:-144}
 NUM_WORKERS=${NUM_WORKERS:-0}
+CSV_PATH=${CSV_PATH:-${BASE_DUMP_DIR}/hgt_benchmark_summary.csv}
 
 CONFIGS=(
   "configs/gla_340M.json"
@@ -62,5 +63,45 @@ for MODEL_CONFIG in "${CONFIGS[@]}"; do
       --bench.width "${WIDTH}" \
       --bench.warmup_steps "${WARMUP_STEPS}" \
       --bench.bench_steps "${BENCH_STEPS}"
+
+    SUMMARY_PATH="${RUN_DIR}/hgt_benchmark_summary.json"
+    python - "${SUMMARY_PATH}" "${CSV_PATH}" "${MODEL_NAME}" "${INPUT_LEN}" <<'PY'
+import csv
+import json
+import os
+import sys
+
+summary_path = sys.argv[1]
+csv_path = sys.argv[2]
+model_name = sys.argv[3]
+input_len = sys.argv[4]
+
+with open(summary_path, "r", encoding="utf-8") as f:
+    data = json.load(f)
+
+row = {
+    "model": model_name,
+    "input_len": int(input_len),
+    "steps": data.get("steps"),
+    "elapsed_seconds": data.get("elapsed_seconds"),
+    "steps_per_sec": data.get("steps_per_sec"),
+    "tokens_per_sec": data.get("tokens_per_sec"),
+    "tokens_per_step": data.get("tokens_per_step"),
+    "global_batch_size": data.get("global_batch_size"),
+    "channels": data.get("channels"),
+    "height": data.get("height"),
+    "width": data.get("width"),
+    "model_params": data.get("model_params"),
+}
+
+fieldnames = list(row.keys())
+write_header = not os.path.exists(csv_path)
+
+with open(csv_path, "a", encoding="utf-8", newline="") as f:
+    writer = csv.DictWriter(f, fieldnames=fieldnames)
+    if write_header:
+        writer.writeheader()
+    writer.writerow(row)
+PY
   done
 done
