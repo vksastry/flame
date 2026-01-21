@@ -1,4 +1,5 @@
 import argparse
+import contextlib
 import json
 import os
 import socket
@@ -34,7 +35,7 @@ from transformers import AutoConfig, AutoModelForCausalLM, CONFIG_MAPPING
 from fla.models import GLAConfig
 
 from flame.components.checkpoint import TrainState
-from flame.config_manager import JobConfig
+from flame.config_manager import JobConfig, TORCH_DTYPE_MAP
 from flame.data_random_tokens import build_random_token_dataloader
 from flame.models.parallelize_fla import parallelize_fla
 from flame.models.pipeline_fla import pipeline_fla
@@ -301,11 +302,20 @@ def main(job_config: JobConfig, bench_args: argparse.Namespace) -> None:
         parallel_dims.loss_parallel_enabled,
         job_config.experimental.enable_compiled_autograd,
     )
-    maybe_enable_amp = dist_utils.maybe_enable_amp(
-        parallel_dims,
-        job_config.training.mixed_precision_param,
-        device_type,
-    )
+    if parallel_dims.tp_enabled or parallel_dims.pp_enabled:
+        if job_config.training.mixed_precision_param == "float32":
+            maybe_enable_amp = contextlib.nullcontext()
+        else:
+            maybe_enable_amp = torch.autocast(
+                device_type,
+                dtype=TORCH_DTYPE_MAP[job_config.training.mixed_precision_param],
+            )
+    else:
+        maybe_enable_amp = dist_utils.maybe_enable_amp(
+            parallel_dims,
+            job_config.training.mixed_precision_param,
+            device_type,
+        )
 
     device_memory_monitor.reset_peak_stats()
 
