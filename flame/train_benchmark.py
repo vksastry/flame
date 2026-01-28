@@ -407,14 +407,15 @@ def main(job_config: JobConfig, bench_args: argparse.Namespace) -> None:
 
                 if parallel_dims.pp_enabled:
                     with train_context(optional_context_parallel_ctx):
-                        targets, pp_losses = (
-                            (labels, []) if has_last_stage else (None, None)
-                        )
+                        with maybe_enable_amp:
+                            targets, pp_losses = (
+                                (labels, []) if has_last_stage else (None, None)
+                            )
 
-                        if has_first_stage:
-                            pp_schedule.step(input_ids, target=targets, losses=pp_losses)
-                        else:
-                            pp_schedule.step(target=targets, losses=pp_losses)
+                            if has_first_stage:
+                                pp_schedule.step(input_ids, target=targets, losses=pp_losses)
+                            else:
+                                pp_schedule.step(target=targets, losses=pp_losses)
 
                     loss = (
                         torch.mean(torch.stack(pp_losses)).to(device)
