@@ -68,8 +68,8 @@ def build_random_token_dataloader(
         sampler=sampler,
         shuffle=shuffle,
         num_workers=job_config.training.num_workers,
-        pin_memory=job_config.training.pin_memory,
-        persistent_workers=job_config.training.persistent_workers,
+        pin_memory=True,
+        persistent_workers=0,
         drop_last=True,
     )
 

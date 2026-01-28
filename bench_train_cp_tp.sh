@@ -1,47 +1,42 @@
-#!/usr/bin/env bash
+#!/bin/bash
 
-set -euo pipefail
+NHOSTS=$(wc -l < "${PBS_NODEFILE}")
+NGPU_PER_HOST=$(nvidia-smi -L | wc -l)
+NGPUS="$((${NHOSTS}*${NGPU_PER_HOST}))"
+echo $NGPUS
+cd /eagle/datascience/vsastry/projects/LinearAttention/new_repo/flame
+module use /soft/modulefiles; module load conda; conda activate base  
+source /eagle/datascience/vsastry/projects/LinearAttention/venvs/flame_env/bin/activate
 
-usage() {
-  cat <<'EOF'
-Usage: bench_train_cp_tp.sh
-
-Notes:
-  - Runs a short transformer-only CP test with mpiexec
-  - Intended for seq_len=100000 feasibility check
-
-Optional env vars:
-  DUMP_DIR (default: ./train_out/transformer_340M/len_100000_cp_tp)
-  STEPS (default: 5)
-  BATCH_SIZE (default: 1)
-  NUM_WORKERS (default: 0)
-  CP_DEGREE (default: 4)
-  TP_DEGREE (default: 1)
-  PP_DEGREE (default: 1)
-EOF
-}
-
-if [[ ${1:-} == "-h" || ${1:-} == "--help" ]]; then
-  usage
-  exit 0
-fi
-
-DUMP_DIR=${DUMP_DIR:-./train_out/transformer_340M/len_100000_cp_tp}
+# proxy settings
+export HTTP_PROXY="http://proxy.alcf.anl.gov:3128"
+export HTTPS_PROXY="http://proxy.alcf.anl.gov:3128"
+export http_proxy="http://proxy.alcf.anl.gov:3128"
+export https_proxy="http://proxy.alcf.anl.gov:3128"
+export ftp_proxy="http://proxy.alcf.anl.gov:3128"
+MODEL='transformer_340M' #'gla_340M'
+DUMP_DIR=${DUMP_DIR:-./train_out/${MODEL}/len_100000_cp_tp}
 STEPS=${STEPS:-5}
 BATCH_SIZE=${BATCH_SIZE:-1}
 NUM_WORKERS=${NUM_WORKERS:-0}
-CP_DEGREE=${CP_DEGREE:-4}
-TP_DEGREE=${TP_DEGREE:-1}
+CP_DEGREE=${CP_DEGREE:-1}
+TP_DEGREE=${TP_DEGREE:-16}
 PP_DEGREE=${PP_DEGREE:-1}
-
-mpiexec -np 4 python -m flame.train_benchmark \
-  --model.config "configs/transformer_340M.json" \
+SEQ_LEN=1000000
+export CUDA_LAUNCH_BLOCKING=1
+export TORCH_USE_CUDA_DSA=1
+#NGPUS=8
+echo "launching the framework"
+mpiexec -np ${NGPUS} -ppn 4 python -m flame.train_benchmark \
+  --model.config "configs/${MODEL}.json" \
   --job.dump_folder "${DUMP_DIR}" \
   --training.batch_size "${BATCH_SIZE}" \
   --training.num_workers "${NUM_WORKERS}" \
-  --training.seq_len 100000 \
-  --training.context_len 100000 \
+  --training.seq_len ${SEQ_LEN} \
+  --training.context_len ${SEQ_LEN} \
   --training.steps "${STEPS}" \
+  --training.mixed_precision_param bfloat16 \
+  --metrics.log_freq 1 \
   --experimental.context_parallel_degree "${CP_DEGREE}" \
   --training.tensor_parallel_degree "${TP_DEGREE}" \
   --experimental.pipeline_parallel_degree "${PP_DEGREE}"

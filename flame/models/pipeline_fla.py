@@ -139,7 +139,7 @@ def pipeline_fla_manual_split(
     models = []
 
     schedule_class = get_schedule_class(
-        job_config.experimental.pipeline_parallel_schedule
+        job_config.parallelism.pipeline_parallel_schedule
     )
     style = "v" if schedule_class == ScheduleZBVZeroBubble else "loop"
 

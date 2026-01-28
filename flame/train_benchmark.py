@@ -23,6 +23,8 @@ from torchtitan.components.metrics import (
     build_metrics_processor,
     ensure_pp_loss_visible,
 )
+
+from flame.utils.grad_utils import clip_grad_norm_mixed
 from torchtitan.components.optimizer import build_optimizers
 from torchtitan.distributed import ParallelDims
 from torchtitan.distributed import utils as dist_utils
@@ -47,7 +49,7 @@ CONFIG_MAPPING["gla"] = GLAConfig
 comm = MPI.COMM_WORLD
 rank = comm.Get_rank()
 size = comm.Get_size()
-local_rank = rank % max(torch.cuda.device_count(), 1)
+local_rank = os.environ.get('PMI_LOCAL_RANK') #rank % max(torch.cuda.device_count(), 1)
 os.environ["RANK"] = str(rank)
 os.environ["WORLD_SIZE"] = str(size)
 master_addr = socket.gethostname() if rank == 0 else None
@@ -111,7 +113,7 @@ def main(job_config: JobConfig, bench_args: argparse.Namespace) -> None:
             dp_replicate=job_config.training.data_parallel_replicate_degree,
             cp=job_config.experimental.context_parallel_degree,
             tp=job_config.training.tensor_parallel_degree,
-            pp=job_config.experimental.pipeline_parallel_degree,
+            pp=job_config.parallelism.pipeline_parallel_degree,
             world_size=world_size,
             enable_loss_parallel=not job_config.training.disable_loss_parallel,
         )
@@ -193,7 +195,7 @@ def main(job_config: JobConfig, bench_args: argparse.Namespace) -> None:
         init_device = "cpu"
     else:
         init_device = device_type
-
+    
     if parallel_dims.pp_enabled:
         (
             pp_schedule,
@@ -207,7 +209,7 @@ def main(job_config: JobConfig, bench_args: argparse.Namespace) -> None:
             job_config,
             device,
             model_config,
-            train_spec.loss_fn,
+            train_spec.build_loss_fn(job_config),
         )
         del model
 
@@ -436,8 +438,7 @@ def main(job_config: JobConfig, bench_args: argparse.Namespace) -> None:
 
                 losses.append(loss)
             loss = sum(losses)
-
-            grad_norm = dist_utils.clip_grad_norm_(
+            grad_norm = clip_grad_norm_mixed( #dist_utils.clip_grad_norm_(
                 [p for m in model_parts for p in m.parameters()],
                 job_config.training.max_norm,
                 foreach=True,

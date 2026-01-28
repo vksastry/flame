@@ -232,7 +232,7 @@ class GLATPPlan(TPPlan):
             "attn.g_proj": self.colwise_parallel(),
             "attn.gk_proj.0": PrepareModuleWeight(layouts=Replicate()),
             "attn.gk_proj.1": self.colwise_parallel(),
-            "attn.g_norm": SequenceParallel(sequence_dim=-1),
+            #"attn.g_norm": SequenceParallel(), #(sequence_dim=-1),
             "attn.o_proj": self.rowwise_parallel(output_layouts=Shard(1)),
         }
 

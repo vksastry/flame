@@ -52,7 +52,7 @@ save_traces_folder = "profile_trace"
 profile_freq = 512
 
 [metrics]
-log_freq = 32
+log_freq = 1
 enable_wandb = true
 
 [experimental]

@@ -198,7 +198,7 @@ class JobConfig:
         self.parser.add_argument(
             "--optimizer.implementation",
             type=str,
-            default="fused",
+            default="for-loop",
             choices=["for-loop", "foreach", "fused"],
             help="""
             Specify which optimizer implementation to use:
@@ -265,6 +265,10 @@ class JobConfig:
         # training configs
         self.parser.add_argument(
             "--training.batch_size", type=int, default=8, help="Batch size"
+        )
+        # training configs
+        self.parser.add_argument(
+            "--training.local_batch_size", type=int, default=8, help="Batch size"
         )
         self.parser.add_argument(
             "--training.seq_len", type=int, default=2048, help="Sequence length"
@@ -527,7 +531,7 @@ class JobConfig:
             help="Whether to apply async tensor parallel (currently only effective when compile is enabled)",
         )
         self.parser.add_argument(
-            "--experimental.pipeline_parallel_degree",
+            "--parallelism.pipeline_parallel_degree",
             type=int,
             default=1,
             help="""
@@ -552,7 +556,7 @@ class JobConfig:
                 but currently the split points must be specified manually.""",
         )
         self.parser.add_argument(
-            "--experimental.pipeline_parallel_schedule",
+            "--parallelism.pipeline_parallel_schedule",
             type=str,
             default="1F1B",
             help="""
@@ -565,7 +569,7 @@ class JobConfig:
                 """,
         )
         self.parser.add_argument(
-            "--experimental.pipeline_parallel_schedule_csv",
+            "--parallelism.pipeline_parallel_schedule_csv",
             type=str,
             default="",
             help="""
@@ -576,9 +580,9 @@ class JobConfig:
         )
 
         self.parser.add_argument(
-            "--experimental.pipeline_parallel_microbatches",
+            "--parallelism.pipeline_parallel_microbatch_size",
             type=int,
-            default=None,
+            default=4,
             help="""
                 How many microbatches to split the global training batch into when using pipeline parallelism.
 
@@ -699,7 +703,7 @@ class JobConfig:
         self.parser.add_argument(
             "--checkpoint.export_dtype",
             type=str,
-            default="float32",
+            default="float16",
             choices=["float16", "bfloat16", "float32"],
             help="""
                 Converts to the specified precision when training completes and model_weights_only=true.
