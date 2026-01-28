@@ -78,6 +78,23 @@ def pipeline_fla_manual_split(
         )
     )
 
+    class PipelineStageWrapper(nn.Module):
+        def __init__(self, stage_model: nn.Module, is_first: bool, is_last: bool) -> None:
+            super().__init__()
+            self.stage_model = stage_model
+            self.is_first = is_first
+            self.is_last = is_last
+
+        def forward(self, input_tensor: torch.Tensor, **kwargs):
+            if self.is_first:
+                outputs = self.stage_model(input_ids=input_tensor, **kwargs)
+            else:
+                outputs = self.stage_model(inputs_embeds=input_tensor, **kwargs)
+
+            if self.is_last:
+                return outputs.logits if hasattr(outputs, "logits") else outputs[0]
+            return outputs[0]
+
     def _build_stage(
         stage_idx: int,
         start_layer: Optional[str],
@@ -118,19 +135,22 @@ def pipeline_fla_manual_split(
             # we do `model.norm = None` and `model.output = None`
             real_model = get_model(model)
             norm_name = get_components_name(real_model, "norm")
-            setattr(real_model, norm_name, None)
+            setattr(real_model, norm_name, nn.Identity())
 
             head_name = get_components_name(model, "lm_head")
-            setattr(model, head_name, None)
+            setattr(model, head_name, nn.Identity())
+
+        stage_model = model if is_last else get_model(model)
+        stage_model = PipelineStageWrapper(stage_model, is_first=is_first, is_last=is_last)
 
         stage = PipelineStage(
-            model,
+            stage_model,
             stage_idx,
             num_stages,
             device,
             group=pp_mesh.get_group("pp"),
         )
-        return stage, model
+        return stage, stage_model
 
     num_stages = len(splits) + 1
     stage_idx = pp_rank
