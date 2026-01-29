@@ -85,6 +85,10 @@ def pipeline_fla_manual_split(
             self.is_first = is_first
             self.is_last = is_last
 
+        def post_init(self) -> None:
+            if hasattr(self.stage_model, "post_init"):
+                self.stage_model.post_init()
+
         def forward(self, input_tensor: torch.Tensor, **kwargs):
             if self.is_first:
                 outputs = self.stage_model(input_ids=input_tensor, **kwargs)
