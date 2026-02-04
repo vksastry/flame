@@ -354,6 +354,9 @@ def main(job_config: JobConfig, bench_args: argparse.Namespace) -> None:
         f"{color.green}  Number of parameters = {model_param_count:,} {color.reset}"
     )
 
+    total_step_time = 0.0
+    total_steps_timed = 0
+
     with (
         maybe_enable_profiling(job_config, global_step=train_state.step) as torch_profiler,
         maybe_enable_memory_snapshot(
@@ -361,6 +364,7 @@ def main(job_config: JobConfig, bench_args: argparse.Namespace) -> None:
         ) as memory_profiler,
     ):
         while train_state.step < job_config.training.steps:
+            step_start = time.perf_counter()
             train_state.step += 1
             gc_handler.run(train_state.step)
 
@@ -459,6 +463,12 @@ def main(job_config: JobConfig, bench_args: argparse.Namespace) -> None:
                 optimizers.step()
             lr_schedulers.step()
 
+            step_time = time.perf_counter() - step_start
+            total_step_time += step_time
+            total_steps_timed += 1
+            steps_per_sec = 1.0 / max(step_time, 1e-9)
+            tokens_per_sec = steps_per_sec * num_tokens_per_step
+
             if metric_logger.should_log(train_state.step):
                 if (
                     parallel_dims.dp_replicate_enabled
@@ -505,6 +515,9 @@ def main(job_config: JobConfig, bench_args: argparse.Namespace) -> None:
                         "optimizer/lr": last_lr,
                         "optimizer/grad_norm": grad_norm.item(),
                         "optimizer/skipped_step": train_state.skipped_step,
+                        "perf/step_time_sec": step_time,
+                        "perf/steps_per_sec": steps_per_sec,
+                        "perf/tokens_per_sec": tokens_per_sec,
                     },
                 )
 
@@ -531,6 +544,17 @@ def main(job_config: JobConfig, bench_args: argparse.Namespace) -> None:
     if torch.distributed.get_rank() == 0:
         logger.info("Sleeping 2 seconds for other ranks to complete")
         time.sleep(2)
+
+    if total_steps_timed > 0 and torch.distributed.get_rank() == 0:
+        avg_step_time = total_step_time / total_steps_timed
+        avg_steps_per_sec = total_steps_timed / max(total_step_time, 1e-9)
+        avg_tokens_per_sec = avg_steps_per_sec * num_tokens_per_step
+        logger.info(
+            "Average perf: "
+            f"step_time={avg_step_time:.4f}s, "
+            f"steps/s={avg_steps_per_sec:.2f}, "
+            f"tokens/s={avg_tokens_per_sec:.2f}"
+        )
 
     metric_logger.close()
     logger.info("Training completed")
