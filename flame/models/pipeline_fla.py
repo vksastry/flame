@@ -85,6 +85,10 @@ def pipeline_fla_manual_split(
             self.is_first = is_first
             self.is_last = is_last
 
+        @property
+        def config(self):
+            return self.stage_model.config
+
         def post_init(self) -> None:
             if hasattr(self.stage_model, "post_init"):
                 self.stage_model.post_init()
