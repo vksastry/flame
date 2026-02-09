@@ -1,12 +1,22 @@
 import numpy as np
 import os
-import matplotlib.pyplot as plt
+import warnings
+
 import cartopy.crs as ccrs
 import cartopy.feature as cfeature
+import matplotlib.pyplot as plt
+import numpy as np
 import pdb
-def plot_geopotential_comparison(model_output, truth, lat, lon, 
-                                  timesteps=None, save_path=None, 
-                                  vmin=-300, vmax=300):
+def plot_geopotential_comparison(
+    model_output,
+    truth,
+    lat,
+    lon,
+    timesteps=None,
+    save_path=None,
+    vmin=-300,
+    vmax=300,
+):
     """
     Plot geopotential height comparison between model output and ground truth.
     
@@ -55,57 +65,68 @@ def plot_geopotential_comparison(model_output, truth, lat, lon,
     # Hours for labeling (assumes 6-hourly data)
     hours = [18, 0, 6, 12]
     
-    # Create subplots for specified timesteps
-    n_times = len(timesteps)
-    fig = plt.figure(figsize=(18, 5 * n_times))
-    
-    cmap = plt.get_cmap('coolwarm')
-    
-    for idx, i in enumerate(timesteps):
-        # Model output
-        ax1 = plt.subplot(n_times, 3, idx * 3 + 1, projection=ccrs.PlateCarree())
-        ax1.set_global()
-        ax1.coastlines()
-        ax1.add_feature(cfeature.BORDERS, linestyle=':')
-        mesh1 = ax1.pcolormesh(lon2d, lat2d, model_output[i], cmap=cmap, 
-                               shading='auto', vmin=vmin, vmax=vmax)
-        day = i // 4 + 1
-        hour = hours[i % 4]
-        ax1.set_title(f'Model - Day {day} Hour {hour}', fontsize=12)
-        plt.colorbar(mesh1, ax=ax1, orientation='horizontal', pad=0.05, 
-                    aspect=30, label='Height (m)')
-        
-        # Ground truth
-        ax2 = plt.subplot(n_times, 3, idx * 3 + 2, projection=ccrs.PlateCarree())
-        ax2.set_global()
-        ax2.coastlines()
-        ax2.add_feature(cfeature.BORDERS, linestyle=':')
-        mesh2 = ax2.pcolormesh(lon2d, lat2d, truth[i], cmap=cmap, 
-                               shading='auto', vmin=vmin, vmax=vmax)
-        ax2.set_title(f'Truth - Day {day} Hour {hour}', fontsize=12)
-        plt.colorbar(mesh2, ax=ax2, orientation='horizontal', pad=0.05, 
-                    aspect=30, label='Height (m)')
-        
-        # Difference
-        ax3 = plt.subplot(n_times, 3, idx * 3 + 3, projection=ccrs.PlateCarree())
-        ax3.set_global()
-        ax3.coastlines()
-        ax3.add_feature(cfeature.BORDERS, linestyle=':')
-        mesh3 = ax3.pcolormesh(lon2d, lat2d, difference[i], cmap='RdBu_r', 
-                               shading='auto', vmin=-100, vmax=100)
-        ax3.set_title(f'Difference - Day {day} Hour {hour}', fontsize=12)
-        plt.colorbar(mesh3, ax=ax3, orientation='horizontal', pad=0.05, 
-                    aspect=30, label='Difference (m)')
-    
-    plt.tight_layout()
-    
+    def _render(use_features: bool):
+        n_times = len(timesteps)
+        fig = plt.figure(figsize=(18, 5 * n_times))
+        cmap = plt.get_cmap('coolwarm')
+
+        for idx, i in enumerate(timesteps):
+            ax1 = plt.subplot(n_times, 3, idx * 3 + 1, projection=ccrs.PlateCarree())
+            if use_features:
+                ax1.set_global()
+                ax1.coastlines()
+                ax1.add_feature(cfeature.BORDERS, linestyle=':')
+            mesh1 = ax1.pcolormesh(lon2d, lat2d, model_output[i], cmap=cmap,
+                                   shading='auto', vmin=vmin, vmax=vmax)
+            day = i // 4 + 1
+            hour = hours[i % 4]
+            ax1.set_title(f'Model - Day {day} Hour {hour}', fontsize=12)
+            plt.colorbar(mesh1, ax=ax1, orientation='horizontal', pad=0.05,
+                        aspect=30, label='Height (m)')
+
+            ax2 = plt.subplot(n_times, 3, idx * 3 + 2, projection=ccrs.PlateCarree())
+            if use_features:
+                ax2.set_global()
+                ax2.coastlines()
+                ax2.add_feature(cfeature.BORDERS, linestyle=':')
+            mesh2 = ax2.pcolormesh(lon2d, lat2d, truth[i], cmap=cmap,
+                                   shading='auto', vmin=vmin, vmax=vmax)
+            ax2.set_title(f'Truth - Day {day} Hour {hour}', fontsize=12)
+            plt.colorbar(mesh2, ax=ax2, orientation='horizontal', pad=0.05,
+                        aspect=30, label='Height (m)')
+
+            ax3 = plt.subplot(n_times, 3, idx * 3 + 3, projection=ccrs.PlateCarree())
+            if use_features:
+                ax3.set_global()
+                ax3.coastlines()
+                ax3.add_feature(cfeature.BORDERS, linestyle=':')
+            mesh3 = ax3.pcolormesh(lon2d, lat2d, difference[i], cmap='RdBu_r',
+                                   shading='auto', vmin=-100, vmax=100)
+            ax3.set_title(f'Difference - Day {day} Hour {hour}', fontsize=12)
+            plt.colorbar(mesh3, ax=ax3, orientation='horizontal', pad=0.05,
+                        aspect=30, label='Difference (m)')
+
+        plt.tight_layout()
+        return fig
+
+    fig = _render(use_features=True)
+
     if save_path:
         os.makedirs(os.path.dirname(save_path), exist_ok=True)
-        plt.savefig(save_path, dpi=150, bbox_inches='tight')
+        try:
+            plt.savefig(save_path, dpi=150, bbox_inches='tight')
+        except Exception as exc:
+            warnings.warn(
+                f"Cartopy feature draw failed ({exc}); saving without map features.",
+                RuntimeWarning,
+            )
+            plt.close(fig)
+            fig = _render(use_features=False)
+            plt.savefig(save_path, dpi=150, bbox_inches='tight')
         print(f"Figure saved to {save_path}")
     else:
         plt.show()
-    
+
     return fig
 
 
