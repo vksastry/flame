@@ -22,24 +22,21 @@
 
 \begin{document}
 %
-\title{Linear Attention Architectures for Geopotential Height Forecasting: A Comparative Study}
+\title{Comparative study of Linear Attention Architectures for Geopotential Height Forecasting}
 %
 \titlerunning{Linear Attention for Geopotential Height Forecasting}
 %
-\author{Author One\inst{1}\orcidID{0000-0000-0000-0000} \and
-Author Two\inst{1}\orcidID{0000-0000-0000-0000} \and
-Author Three\inst{2}\orcidID{0000-0000-0000-0000}}
+\author{Varuni Sastry\inst{1}\orcidID{0000-0000-0000-0000} \and
+Vishwas Rao\inst{1}\orcidID{0000-0000-0000-0000}}
 %
-\authorrunning{A. One et al.}
+\authorrunning{V. Sastry et al.}
 %
-\institute{Institution One, City, Country \email{email@institution.edu}
-\and
-Institution Two, City, Country \email{email@institution2.edu}}
+\institute{Argonne National Laboratory, Lemont, USA \email{vsastry@anl.gov, vhebbur@anl.gov}}
 %
 \maketitle
 %
 \begin{abstract}
-Accurate forecasting of geopotential height is crucial for numerical weather prediction and climate modeling. While transformer-based models have shown promising results in weather forecasting, their quadratic computational complexity with sequence length limits their applicability to long-range temporal dependencies. In this work, we present a comprehensive comparison of linear attention architectures---including Gated Linear Attention (GLA), Gated DeltaNet, Kimi Delta Attention (KDA), and Mamba2---for geopotential height forecasting using NCEP reanalysis data. We evaluate these architectures against standard transformers in terms of forecasting accuracy (RMSE, anomaly correlation coefficient), computational efficiency, and memory usage. Our experiments demonstrate that linear attention mechanisms achieve competitive forecasting performance while offering significant computational advantages for processing long temporal sequences. We release our training framework, \method{}, built on PyTorch's torchtitan, to facilitate reproducible research in this domain.
+Accurate forecasting of geopotential height is crucial for numerical weather prediction and climate modeling. While transformer-based models have shown promising results in weather forecasting, their quadratic computational complexity with sequence length limits their applicability to long-range temporal dependencies. In this work, we present a comprehensive comparison of linear attention architectures---including Gated Linear Attention (GLA), Gated DeltaNet, Kimi Delta Attention (KDA), and Mamba2---for geopotential height forecasting using NCEP reanalysis data. We evaluate these architectures against standard transformers in terms of forecasting accuracy, computational efficiency, and memory usage. Our experiments demonstrate that linear attention mechanisms achieve competitive forecasting performance while offering significant computational advantages for processing long temporal sequences. We release our training framework, \method{}, built on PyTorch's torchtitan, to facilitate reproducible research in this domain.
 
 \keywords{Linear Attention \and Weather Forecasting \and Geopotential Height \and State Space Models \and Deep Learning}
 \end{abstract}
@@ -59,8 +56,8 @@ In this paper, we present a systematic comparison of these linear attention arch
 
 \begin{enumerate}
     \item A comprehensive benchmark comparing six attention mechanisms (Transformer, GLA, Gated DeltaNet, DeltaNet, Mamba2, and KDA) on geopotential height forecasting using NCEP reanalysis data.
-    \item Analysis of the accuracy-efficiency trade-offs across architectures, measuring forecasting skill (RMSE, anomaly correlation), computational throughput, and memory consumption.
-    \item An open-source training framework, \method{}, built on torchtitan with specialized support for linear attention models, enabling reproducible research in weather forecasting.
+    \item Analysis of the accuracy-efficiency trade-offs across architectures, measuring forecasting skill (root mean square error), computational throughput, and memory consumption.
+    \item Adapting an open-source training framework, \method{}, built on torchtitan with specialized support for linear attention models, enabling reproducible research in weather forecasting.
 \end{enumerate}
 
 %============================================================================
@@ -110,9 +107,9 @@ where $g_t = \sigma(W_o x_t)$ is an output gate.
 \end{equation}
 where $\alpha_t \in \mathbb{R}^{d_k}$ provides channel-wise decay. KDA also introduces chunked recurrence for efficient GPU utilization, achieving up to 6$\times$ faster decoding compared to full attention at long context lengths.
 
-\subsection{State Space Models}
+%\subsection{State Space Models}
 
-State space models (SSMs) offer an alternative approach to efficient sequence modeling~\cite{gu2022efficiently}. The Structured State Space (S4) model~\cite{gu2022efficiently} parameterizes a continuous-time linear system:
+\textbf{State space models (SSMs)} offer an alternative approach to efficient sequence modeling~\cite{gu2022efficiently}. The Structured State Space (S4) model~\cite{gu2022efficiently} parameterizes a continuous-time linear system:
 \begin{equation}
     \dot{h}(t) = Ah(t) + Bx(t), \quad y(t) = Ch(t) + Dx(t)
 \end{equation}
@@ -270,16 +267,16 @@ We evaluate models using standard meteorological metrics:
     \text{RMSE} = \sqrt{\frac{1}{N}\sum_{i=1}^{N}(y_i - \hat{y}_i)^2}
 \end{equation}
 
-\textbf{Mean Absolute Error (MAE):}
-\begin{equation}
-    \text{MAE} = \frac{1}{N}\sum_{i=1}^{N}|y_i - \hat{y}_i|
-\end{equation}
+%\textbf{Mean Absolute Error (MAE):}
+%\begin{equation}
+%    \text{MAE} = \frac{1}{N}\sum_{i=1}^{N}|y_i - \hat{y}_i|
+%\end{equation}
 
-\textbf{Anomaly Correlation Coefficient (ACC):}
-\begin{equation}
-    \text{ACC} = \frac{\sum_i (y_i - \bar{y})(\hat{y}_i - \bar{y})}{\sqrt{\sum_i (y_i - \bar{y})^2 \sum_i (\hat{y}_i - \bar{y})^2}}
-\end{equation}
-where $\bar{y}$ is the climatological mean. ACC $> 0.6$ is typically considered skillful forecast in operational meteorology.
+%\textbf{Anomaly Correlation Coefficient (ACC):}
+%\begin{equation}
+%    \text{ACC} = \frac{\sum_i (y_i - \bar{y})(\hat{y}_i - \bar{y})}{\sqrt{\sum_i (y_i - \bar{y})^2 \sum_i (\hat{y}_i - \bar{y})^2}}
+%\end{equation}
+%where $\bar{y}$ is the climatological mean. ACC $> 0.6$ is typically considered skillful forecast in operational meteorology.
 
 \textbf{Computational Metrics:}
 \begin{itemize}
@@ -330,11 +327,46 @@ Table~\ref{tab:main_results} presents the forecasting performance of all archite
 
 \subsection{Forecast Horizon Analysis}
 
-\todoremark{Add figure showing RMSE vs lead time for all models}
+\begin{figure}[t]
+    \centering
+    \begin{subfigure}[t]{0.48\textwidth}
+        \centering
+        \includegraphics[width=\textwidth]{figures/loss_train_200steps.pdf}
+        \caption{Training loss (steps 1--200).}
+    \end{subfigure}
+    \hfill
+    \begin{subfigure}[t]{0.48\textwidth}
+        \centering
+        \includegraphics[width=\textwidth]{figures/loss_eval_200steps.pdf}
+        \caption{Eval loss (steps 1--200).}
+    \end{subfigure}
+    \caption{Training and evaluation loss on HGT over the first 200 steps for Transformer, GLA, DeltaNet, Gated DeltaNet, KDA, and Mamba2.}
+    \label{fig:loss-train-eval-200}
+\end{figure}
+
+Here’s the grouped figure snippet for throughput + memory scaling (read‑only, no edits):
+\begin{figure}[t]
+    \centering
+    \begin{subfigure}[t]{0.48\textwidth}
+        \centering
+        \includegraphics[width=\textwidth]{figures/throughput_scaling.pdf}
+        \caption{Tokens/sec vs. sequence length.}
+    \end{subfigure}
+    \hfill
+    \begin{subfigure}[t]{0.48\textwidth}
+        \centering
+        \includegraphics[width=\textwidth]{figures/memory_scaling.pdf}
+        \caption{Memory vs. sequence length.}
+    \end{subfigure}
+    \caption{Throughput and memory scaling on HGT at sequence lengths 8K, 32K, and 131K.}
+    \label{fig:throughput-memory}
+\end{figure}
+
+%\todoremark{Add figure showing RMSE vs lead time for all models}
 
 \subsection{Computational Efficiency}
 
-\todoremark{Add throughput and memory comparison}
+%\todoremark{Add throughput and memory comparison}
 
 %============================================================================
 \section{Discussion}

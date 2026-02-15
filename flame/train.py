@@ -49,6 +49,7 @@ import custom_models
 from flame.components.checkpoint import TrainState
 from flame.config_manager import JobConfig
 from flame.data import build_dataloader, build_dataset
+from flame.utils.grad_utils import clip_grad_norm_mixed
 from flame.models.parallelize_fla import parallelize_fla
 from flame.models.pipeline_fla import pipeline_fla
 from flame.tools.utils import get_nparams_and_flops
@@ -535,7 +536,7 @@ def main(job_config: JobConfig):
             loss = sum(losses)
 
             # clip gradients
-            grad_norm = dist_utils.clip_grad_norm_(
+            grad_norm = clip_grad_norm_mixed(
                 [p for m in model_parts for p in m.parameters()],
                 job_config.training.max_norm,
                 foreach=True,

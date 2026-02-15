@@ -30,6 +30,7 @@ from flame.models.hgt_model import HGTModelWrapper
 from flame.models.parallelize_fla import parallelize_fla
 from flame.models.pipeline_fla import pipeline_fla
 from flame.tools.utils import get_nparams_and_flops
+from flame.utils.grad_utils import clip_grad_norm_mixed
 
 
 CONFIG_MAPPING["gla"] = GLAConfig
@@ -261,7 +262,7 @@ def main(job_config: JobConfig, bench_args: argparse.Namespace) -> None:
                 losses.append(loss)
 
             loss = sum(losses)
-            grad_norm = dist_utils.clip_grad_norm_(
+            grad_norm = clip_grad_norm_mixed(
                 [p for p in model.parameters()],
                 job_config.training.max_norm,
                 foreach=True,

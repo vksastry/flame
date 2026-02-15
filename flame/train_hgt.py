@@ -58,6 +58,7 @@ from flame.models.parallelize_fla import parallelize_fla
 from flame.models.pipeline_fla import pipeline_fla
 from flame.tools.utils import get_nparams_and_flops
 from flame.models.hgt_model import HGTModelWrapper
+from flame.utils.grad_utils import clip_grad_norm_mixed
 from transformers import CONFIG_MAPPING
 from fla.models import GLAConfig
 CONFIG_MAPPING["gla"] = GLAConfig
@@ -194,6 +195,12 @@ def evaluate(
 
     total_loss = 0.0
     total_batches = 0
+    total_acc = 0.0
+    total_acc_batches = 0
+    dataset = val_loader.dataset
+    lat_tensor = None
+    if lat is not None:
+        lat_tensor = torch.as_tensor(lat, device=device_type, dtype=torch.float32)
 
     # choose one of the batch bidx to plot
     if plot and max_batches is not None:
@@ -233,30 +240,57 @@ def evaluate(
 
         total_loss += float(loss.detach().float().item())
         total_batches += 1
+        pred_phys = dataset.denormalize(output.logits).detach().float()
+        truth_phys = dataset.denormalize(targets).detach().float()
+        if pred_phys.device != device_type:
+            pred_phys = pred_phys.to(device_type)
+            truth_phys = truth_phys.to(device_type)
+
+        climatology = truth_phys.mean(dim=0, keepdim=True)
+        pred_anom = pred_phys - climatology
+        truth_anom = truth_phys - climatology
+        if lat_tensor is not None:
+            weights = torch.cos(torch.deg2rad(lat_tensor))
+            weights = weights / torch.mean(weights)
+            weights = weights.view(1, 1, 1, -1, 1)
+            pred_anom = pred_anom * weights
+            truth_anom = truth_anom * weights
+
+        pred_flat = pred_anom.flatten(start_dim=2)
+        truth_flat = truth_anom.flatten(start_dim=2)
+        num = (pred_flat * truth_flat).sum(dim=2)
+        denom = torch.sqrt(
+            (pred_flat ** 2).sum(dim=2) * (truth_flat ** 2).sum(dim=2)
+        )
+        acc = torch.where(denom > 0, num / denom, torch.zeros_like(denom))
+        total_acc += float(acc.mean().item())
+        total_acc_batches += 1
         # plotting 
         if plot and plot_path is not None and bidx == plot_bidx :
-            dataset = val_loader.dataset
-            pred_phys = dataset.denormalize(output.logits)
-            truth_phys = dataset.denormalize(targets)
-                    
-            pred_phys = pred_phys.detach().float().cpu()[:,0,0,:,:]
-            truth_phys = truth_phys.detach().float().cpu()[:,0,0,:,:]
-            plot_geopotential_comparison(model_output=pred_phys,truth=truth_phys,lat=lat,lon=lon,timesteps=[0, 4, 8, 12],  # Plot specific timesteps
-                                                         save_path=plot_path,  # Set to filename to save
-                                                         vmin=vmin,
-                                                         vmax=vmax)
+            pred_plot = pred_phys.detach().float().cpu()[:,0,0,:,:]
+            truth_plot = truth_phys.detach().float().cpu()[:,0,0,:,:]
+            plot_geopotential_comparison(model_output=pred_plot,truth=truth_plot,lat=lat,lon=lon,timesteps=[0, 4, 8, 12],  # Plot specific timesteps
+                                                          save_path=plot_path,  # Set to filename to save
+                                                          vmin=vmin,
+                                                          vmax=vmax)
 
 
     # Reduce across ranks (sum loss, sum batches)
     if torch.distributed.is_available() and torch.distributed.is_initialized():
-        t = torch.tensor([total_loss, total_batches], device=inputs.device)
+        t = torch.tensor(
+            [total_loss, total_batches, total_acc, total_acc_batches],
+            device=inputs.device,
+        )
         torch.distributed.all_reduce(t, op=torch.distributed.ReduceOp.SUM)
         total_loss = float(t[0].item())
         total_batches = int(t[1].item())
+        total_acc = float(t[2].item())
+        total_acc_batches = int(t[3].item())
 
     mean_loss = total_loss / max(total_batches, 1)
+    mean_acc = total_acc / max(total_acc_batches, 1)
     model.train()
-    return mean_loss
+    return mean_loss, mean_acc
 
 register_train_spec(
     TrainSpec(
@@ -806,7 +840,7 @@ def main(job_config: JobConfig):
                                                          vmax=vmax)
 
             # clip gradients
-            grad_norm = dist_utils.clip_grad_norm_(
+            grad_norm = clip_grad_norm_mixed(
                 [p for m in model_parts for p in m.parameters()],
                 job_config.training.max_norm,
                 foreach=True,
@@ -887,10 +921,24 @@ def main(job_config: JobConfig):
                     else:
                         plot=False
                         plot_path = None
-                    val_loss = evaluate(model, val_loader, plot, plot_path, device,lat, lon, vmin, vmax, max_batches=2)
+                    val_loss, val_acc = evaluate(
+                        model,
+                        val_loader,
+                        plot,
+                        plot_path,
+                        device,
+                        lat,
+                        lon,
+                        vmin,
+                        vmax,
+                        max_batches=2,
+                    )
                     extra_metrics["loss_metrics/val_avg_loss"] = val_loss
+                    extra_metrics["loss_metrics/val_acc"] = val_acc
                     if int(rank) == 0:
-                        logger.info(f"[eval] step {train_state.step} val_loss={val_loss:.6f}")
+                        logger.info(
+                            f"[eval] step {train_state.step} val_loss={val_loss:.6f} val_acc={val_acc:.6f}"
+                        )
                 
                 metric_logger.log(
                     train_state.step,
