@@ -1149,14 +1149,42 @@ def main(job_config: JobConfig):
                                     for t in range(t_idx)
                                 ]
                             )
+                            per_t_mae = " ".join(
+                                [
+                                    f"t{t}={baseline_metrics[f'loss_metrics/val_mae_t{t}']:.6f}"
+                                    for t in range(t_idx)
+                                ]
+                            )
+                            per_t_acc = " ".join(
+                                [
+                                    f"t{t}={baseline_metrics[f'loss_metrics/val_acc_t{t}']:.6f}"
+                                    for t in range(t_idx)
+                                ]
+                            )
                             per_t_persist = " ".join(
                                 [
                                     f"t{t}={baseline_metrics[f'baseline/persistence_rmse_t{t}']:.6f}"
                                     for t in range(t_idx)
                                 ]
                             )
+                            per_t_persist_mae = " ".join(
+                                [
+                                    f"t{t}={baseline_metrics[f'baseline/persistence_mae_t{t}']:.6f}"
+                                    for t in range(t_idx)
+                                ]
+                            )
+                            per_t_persist_acc = " ".join(
+                                [
+                                    f"t{t}={baseline_metrics[f'baseline/persistence_acc_t{t}']:.6f}"
+                                    for t in range(t_idx)
+                                ]
+                            )
                             logger.info(f"[eval] per-timestep val_mse: {per_t_loss}")
+                            logger.info(f"[eval] per-timestep val_mae: {per_t_mae}")
+                            logger.info(f"[eval] per-timestep val_acc: {per_t_acc}")
                             logger.info(f"[eval] per-timestep persist_rmse: {per_t_persist}")
+                            logger.info(f"[eval] per-timestep persist_mae: {per_t_persist_mae}")
+                            logger.info(f"[eval] per-timestep persist_acc: {per_t_persist_acc}")
                 
                 metric_logger.log(
                     train_state.step,
