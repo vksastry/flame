@@ -1139,6 +1139,24 @@ def main(job_config: JobConfig):
                             f"climo_mae={baseline_metrics['baseline/climatology_mae']:.6f} "
                             f"climo_acc={baseline_metrics['baseline/climatology_acc']:.6f}"
                         )
+                        t_idx = 0
+                        while f"loss_metrics/val_mse_t{t_idx}" in baseline_metrics:
+                            t_idx += 1
+                        if t_idx > 0:
+                            per_t_loss = " ".join(
+                                [
+                                    f"t{t}={baseline_metrics[f'loss_metrics/val_mse_t{t}']:.6f}"
+                                    for t in range(t_idx)
+                                ]
+                            )
+                            per_t_persist = " ".join(
+                                [
+                                    f"t{t}={baseline_metrics[f'baseline/persistence_rmse_t{t}']:.6f}"
+                                    for t in range(t_idx)
+                                ]
+                            )
+                            logger.info(f"[eval] per-timestep val_mse: {per_t_loss}")
+                            logger.info(f"[eval] per-timestep persist_rmse: {per_t_persist}")
                 
                 metric_logger.log(
                     train_state.step,
