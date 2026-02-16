@@ -1197,15 +1197,24 @@ def main(job_config: JobConfig):
                                     for t in range(t_idx)
                                 ]
                             )
-                            logger.info(f"[eval] per-timestep val_mse: {per_t_loss}")
-                            logger.info(f"[eval] per-timestep val_mae: {per_t_mae}")
-                            logger.info(f"[eval] per-timestep val_acc: {per_t_acc}")
-                            logger.info(f"[eval] per-timestep persist_rmse: {per_t_persist}")
-                            logger.info(f"[eval] per-timestep persist_mae: {per_t_persist_mae}")
-                            logger.info(f"[eval] per-timestep persist_acc: {per_t_persist_acc}")
-                            logger.info(f"[eval] per-timestep climo_rmse: {per_t_climo_rmse}")
-                            logger.info(f"[eval] per-timestep climo_mae: {per_t_climo_mae}")
-                            logger.info(f"[eval] per-timestep climo_acc: {per_t_climo_acc}")
+                            logger.info(
+                                "[eval] per-timestep val_mse: %s | val_mae: %s | val_acc: %s",
+                                per_t_loss,
+                                per_t_mae,
+                                per_t_acc,
+                            )
+                            logger.info(
+                                "[eval] per-timestep persist_rmse: %s | persist_mae: %s | persist_acc: %s",
+                                per_t_persist,
+                                per_t_persist_mae,
+                                per_t_persist_acc,
+                            )
+                            logger.info(
+                                "[eval] per-timestep climo_rmse: %s | climo_mae: %s | climo_acc: %s",
+                                per_t_climo_rmse,
+                                per_t_climo_mae,
+                                per_t_climo_acc,
+                            )
                 
                 metric_logger.log(
                     train_state.step,
