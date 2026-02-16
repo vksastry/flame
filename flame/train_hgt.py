@@ -1143,21 +1143,9 @@ def main(job_config: JobConfig):
                         while f"loss_metrics/val_mse_t{t_idx}" in baseline_metrics:
                             t_idx += 1
                         if t_idx > 0:
-                            per_t_loss = " ".join(
+                            per_t_rmse = " ".join(
                                 [
-                                    f"t{t}={baseline_metrics[f'loss_metrics/val_mse_t{t}']:.6f}"
-                                    for t in range(t_idx)
-                                ]
-                            )
-                            per_t_mae = " ".join(
-                                [
-                                    f"t{t}={baseline_metrics[f'loss_metrics/val_mae_t{t}']:.6f}"
-                                    for t in range(t_idx)
-                                ]
-                            )
-                            per_t_acc = " ".join(
-                                [
-                                    f"t{t}={baseline_metrics[f'loss_metrics/val_acc_t{t}']:.6f}"
+                                    f"t{t}={baseline_metrics[f'loss_metrics/val_rmse_t{t}']:.6f}"
                                     for t in range(t_idx)
                                 ]
                             )
@@ -1167,53 +1155,19 @@ def main(job_config: JobConfig):
                                     for t in range(t_idx)
                                 ]
                             )
-                            per_t_persist_mae = " ".join(
+                            per_t_delta = " ".join(
                                 [
-                                    f"t{t}={baseline_metrics[f'baseline/persistence_mae_t{t}']:.6f}"
-                                    for t in range(t_idx)
-                                ]
-                            )
-                            per_t_persist_acc = " ".join(
-                                [
-                                    f"t{t}={baseline_metrics[f'baseline/persistence_acc_t{t}']:.6f}"
-                                    for t in range(t_idx)
-                                ]
-                            )
-                            per_t_climo_rmse = " ".join(
-                                [
-                                    f"t{t}={baseline_metrics[f'baseline/climatology_rmse_t{t}']:.6f}"
-                                    for t in range(t_idx)
-                                ]
-                            )
-                            per_t_climo_mae = " ".join(
-                                [
-                                    f"t{t}={baseline_metrics[f'baseline/climatology_mae_t{t}']:.6f}"
-                                    for t in range(t_idx)
-                                ]
-                            )
-                            per_t_climo_acc = " ".join(
-                                [
-                                    f"t{t}={baseline_metrics[f'baseline/climatology_acc_t{t}']:.6f}"
+                                    (
+                                        f"t{t}={baseline_metrics[f'loss_metrics/val_rmse_t{t}'] - baseline_metrics[f'baseline/persistence_rmse_t{t}']:.6f}"
+                                    )
                                     for t in range(t_idx)
                                 ]
                             )
                             logger.info(
-                                "[eval] per-timestep val_mse: %s | val_mae: %s | val_acc: %s",
-                                per_t_loss,
-                                per_t_mae,
-                                per_t_acc,
-                            )
-                            logger.info(
-                                "[eval] per-timestep persist_rmse: %s | persist_mae: %s | persist_acc: %s",
+                                "[eval] per-timestep rmse: val %s | persist %s | delta %s",
+                                per_t_rmse,
                                 per_t_persist,
-                                per_t_persist_mae,
-                                per_t_persist_acc,
-                            )
-                            logger.info(
-                                "[eval] per-timestep climo_rmse: %s | climo_mae: %s | climo_acc: %s",
-                                per_t_climo_rmse,
-                                per_t_climo_mae,
-                                per_t_climo_acc,
+                                per_t_delta,
                             )
                 
                 metric_logger.log(
