@@ -17,7 +17,7 @@ import hashlib
 comm = MPI.COMM_WORLD
 rank = comm.Get_rank()
 size = comm.Get_size()
-local_rank = rank % torch.cuda.device_count() 
+local_rank = os.environ.get('PMI_LOCAL_RANK') #rank % torch.cuda.device_count() 
 os.environ['RANK']=str(rank)
 os.environ['WORLD_SIZE']=str(size)
 #master_addr = "localhost"
@@ -885,7 +885,7 @@ def main(job_config: JobConfig):
                 losses.append(loss)
             loss = sum(losses) # this is for the summing of losses over the gradient accum - but this does not matter 
             with torch.no_grad():
-                if train_state.step % 500 == 0: 
+                if train_state.step % 200 == 0: 
                     print("labels stats:",
                         targets.mean().item(),
                         targets.std().item(),
@@ -905,7 +905,7 @@ def main(job_config: JobConfig):
                     logger.info(f"{color.red} rmse: {torch.sqrt((diff ** 2).mean()).item()} at trainstep : {train_state.step} ")
                     logger.info(f"{color.red} mean-baseline RMSE: {baseline_rmse} at trainstep : {train_state.step} ")
             
-                if train_state.step % 250 == 0:
+                if train_state.step % 200 == 0:
                     f_path = job_config.job.dump_folder + "/plots/train_step_" + str(train_state.step) + ".png"
                     with torch.no_grad():
                         dataset = train_loader.dataset
@@ -995,7 +995,7 @@ def main(job_config: JobConfig):
                         "optimizer/skipped_step": train_state.skipped_step,
                     }
                 if train_state.step % 10 == 0: # add job_config.training.eval_interval == 0: and job_config.training.eval_max_batches
-                    if train_state.step % 500 == 0:
+                    if train_state.step % 200 == 0:
                         plot=True,
                         plot_path=job_config.job.dump_folder + "/plots/val_step_" + str(train_state.step) + ".png"
                     else:
