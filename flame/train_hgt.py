@@ -197,6 +197,13 @@ def evaluate(
     total_batches = 0
     total_acc = 0.0
     total_acc_batches = 0
+    total_persist_rmse = 0.0
+    total_persist_mae = 0.0
+    total_persist_acc = 0.0
+    total_climo_rmse = 0.0
+    total_climo_mae = 0.0
+    total_climo_acc = 0.0
+    total_baseline_batches = 0
     dataset = val_loader.dataset
     lat_tensor = None
     if lat is not None:
@@ -265,6 +272,46 @@ def evaluate(
         acc = torch.where(denom > 0, num / denom, torch.zeros_like(denom))
         total_acc += float(acc.mean().item())
         total_acc_batches += 1
+
+        # Persistence baseline (last input frame)
+        persist_pred = inputs[:, -1:, ...]
+        if truth_phys.shape[1] > 1:
+            persist_pred = persist_pred.expand(-1, truth_phys.shape[1], -1, -1, -1)
+        persist_phys = dataset.denormalize(persist_pred).detach().float()
+        if persist_phys.device != device_type:
+            persist_phys = persist_phys.to(device_type)
+        persist_diff = persist_phys - truth_phys
+        total_persist_rmse += float(torch.sqrt((persist_diff ** 2).mean()).item())
+        total_persist_mae += float(persist_diff.abs().mean().item())
+
+        persist_anom = persist_phys - climatology
+        if lat_tensor is not None:
+            persist_anom = persist_anom * weights
+        persist_flat = persist_anom.flatten(start_dim=2)
+        num = (persist_flat * truth_flat).sum(dim=2)
+        denom = torch.sqrt(
+            (persist_flat ** 2).sum(dim=2) * (truth_flat ** 2).sum(dim=2)
+        )
+        persist_acc = torch.where(denom > 0, num / denom, torch.zeros_like(denom))
+        total_persist_acc += float(persist_acc.mean().item())
+
+        # Climatology baseline (per-batch mean)
+        climo_pred = climatology.expand_as(truth_phys)
+        climo_diff = climo_pred - truth_phys
+        total_climo_rmse += float(torch.sqrt((climo_diff ** 2).mean()).item())
+        total_climo_mae += float(climo_diff.abs().mean().item())
+
+        climo_anom = climo_pred - climatology
+        if lat_tensor is not None:
+            climo_anom = climo_anom * weights
+        climo_flat = climo_anom.flatten(start_dim=2)
+        num = (climo_flat * truth_flat).sum(dim=2)
+        denom = torch.sqrt(
+            (climo_flat ** 2).sum(dim=2) * (truth_flat ** 2).sum(dim=2)
+        )
+        climo_acc = torch.where(denom > 0, num / denom, torch.zeros_like(denom))
+        total_climo_acc += float(climo_acc.mean().item())
+        total_baseline_batches += 1
         # plotting 
         if plot and plot_path is not None and bidx == plot_bidx :
             pred_plot = pred_phys.detach().float().cpu()[:,0,0,:,:]
@@ -278,7 +325,19 @@ def evaluate(
     # Reduce across ranks (sum loss, sum batches)
     if torch.distributed.is_available() and torch.distributed.is_initialized():
         t = torch.tensor(
-            [total_loss, total_batches, total_acc, total_acc_batches],
+            [
+                total_loss,
+                total_batches,
+                total_acc,
+                total_acc_batches,
+                total_persist_rmse,
+                total_persist_mae,
+                total_persist_acc,
+                total_climo_rmse,
+                total_climo_mae,
+                total_climo_acc,
+                total_baseline_batches,
+            ],
             device=inputs.device,
         )
         torch.distributed.all_reduce(t, op=torch.distributed.ReduceOp.SUM)
@@ -286,11 +345,32 @@ def evaluate(
         total_batches = int(t[1].item())
         total_acc = float(t[2].item())
         total_acc_batches = int(t[3].item())
+        total_persist_rmse = float(t[4].item())
+        total_persist_mae = float(t[5].item())
+        total_persist_acc = float(t[6].item())
+        total_climo_rmse = float(t[7].item())
+        total_climo_mae = float(t[8].item())
+        total_climo_acc = float(t[9].item())
+        total_baseline_batches = int(t[10].item())
 
     mean_loss = total_loss / max(total_batches, 1)
     mean_acc = total_acc / max(total_acc_batches, 1)
+    mean_persist_rmse = total_persist_rmse / max(total_baseline_batches, 1)
+    mean_persist_mae = total_persist_mae / max(total_baseline_batches, 1)
+    mean_persist_acc = total_persist_acc / max(total_baseline_batches, 1)
+    mean_climo_rmse = total_climo_rmse / max(total_baseline_batches, 1)
+    mean_climo_mae = total_climo_mae / max(total_baseline_batches, 1)
+    mean_climo_acc = total_climo_acc / max(total_baseline_batches, 1)
     model.train()
-    return mean_loss, mean_acc
+    baseline_metrics = {
+        "baseline/persistence_rmse": mean_persist_rmse,
+        "baseline/persistence_mae": mean_persist_mae,
+        "baseline/persistence_acc": mean_persist_acc,
+        "baseline/climatology_rmse": mean_climo_rmse,
+        "baseline/climatology_mae": mean_climo_mae,
+        "baseline/climatology_acc": mean_climo_acc,
+    }
+    return mean_loss, mean_acc, baseline_metrics
 
 register_train_spec(
     TrainSpec(
@@ -921,7 +1001,7 @@ def main(job_config: JobConfig):
                     else:
                         plot=False
                         plot_path = None
-                    val_loss, val_acc = evaluate(
+                    val_loss, val_acc, baseline_metrics = evaluate(
                         model,
                         val_loader,
                         plot,
@@ -935,9 +1015,16 @@ def main(job_config: JobConfig):
                     )
                     extra_metrics["loss_metrics/val_avg_loss"] = val_loss
                     extra_metrics["loss_metrics/val_acc"] = val_acc
+                    extra_metrics.update(baseline_metrics)
                     if int(rank) == 0:
                         logger.info(
-                            f"[eval] step {train_state.step} val_loss={val_loss:.6f} val_acc={val_acc:.6f}"
+                            f"[eval] step {train_state.step} val_loss={val_loss:.6f} val_acc={val_acc:.6f} "
+                            f"persist_rmse={baseline_metrics['baseline/persistence_rmse']:.6f} "
+                            f"persist_mae={baseline_metrics['baseline/persistence_mae']:.6f} "
+                            f"persist_acc={baseline_metrics['baseline/persistence_acc']:.6f} "
+                            f"climo_rmse={baseline_metrics['baseline/climatology_rmse']:.6f} "
+                            f"climo_mae={baseline_metrics['baseline/climatology_mae']:.6f} "
+                            f"climo_acc={baseline_metrics['baseline/climatology_acc']:.6f}"
                         )
                 
                 metric_logger.log(
