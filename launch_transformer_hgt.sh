@@ -14,7 +14,7 @@ T_STEPS="$((${STEPS_PER_EPOCH}*${NEPOCHS}))"
 echo "Steps number: $T_STEPS"
 
 
-cd /eagle/datascience/vsastry/projects/LinearAttention/new_repo/flame
+cd /eagle/datascience/vsastry/projects/LinearAttention/new_repo/multi_Tout/flame 
 module use /soft/modulefiles; module load conda; conda activate base
 source /eagle/datascience/vsastry/projects/LinearAttention/venvs/flame_env/bin/activate
 
@@ -67,7 +67,7 @@ NNODE=$NHOSTS NGPU=$NGPU_PER_HOST LOG_RANK=0 bash train_multi.sh \
 	  --training.skip_nan_inf \
 	  --training.data_files /eagle/datascience/vsastry/projects/LatentTwinShared/hgt_all_new.npy \
 	  --training.input_len 8 \
-          --training.target_len 1 \
+          --training.target_len 4 \
           --training.stride 1 \
           --training.levels 7 \
 	  --training.dataset_split train \
@@ -78,7 +78,7 @@ NNODE=$NHOSTS NGPU=$NGPU_PER_HOST LOG_RANK=0 bash train_multi.sh \
 	  --training.tensor_parallel_degree 1 \
 	  --training.data_parallel_replicate_degree 1 \
 	  --training.disable_loss_parallel \
-	  --checkpoint.interval 500 \
+	  --checkpoint.interval 50 \
 	  --checkpoint.load_step -1 \
 	  --metrics.log_freq 1
 	  #--training.streaming \
