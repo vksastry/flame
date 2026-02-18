@@ -7,6 +7,10 @@ import cartopy.feature as cfeature
 import matplotlib.pyplot as plt
 import numpy as np
 import pdb
+
+FONT_SIZE = 12
+TITLE_SIZE = 16
+LABEL_SIZE = 14
 def plot_geopotential_comparison(
     model_output,
     truth,
@@ -69,6 +73,13 @@ def plot_geopotential_comparison(
         n_times = len(timesteps)
         fig = plt.figure(figsize=(18, 5 * n_times))
         cmap = plt.get_cmap('coolwarm')
+        plt.rcParams.update({
+            "font.size": FONT_SIZE,
+            "axes.titlesize": TITLE_SIZE,
+            "axes.labelsize": LABEL_SIZE,
+            "xtick.labelsize": FONT_SIZE,
+            "ytick.labelsize": FONT_SIZE,
+        })
 
         for idx, i in enumerate(timesteps):
             ax1 = plt.subplot(n_times, 3, idx * 3 + 1, projection=ccrs.PlateCarree())
@@ -80,9 +91,11 @@ def plot_geopotential_comparison(
                                    shading='auto', vmin=vmin, vmax=vmax)
             day = i // 4 + 1
             hour = hours[i % 4]
-            ax1.set_title(f'Model - Day {day} Hour {hour}', fontsize=12)
-            plt.colorbar(mesh1, ax=ax1, orientation='horizontal', pad=0.05,
-                        aspect=30, label='Height (m)')
+            ax1.set_title(f"Model - Day {day} Hour {hour}", fontsize=TITLE_SIZE)
+            cbar1 = plt.colorbar(mesh1, ax=ax1, orientation="horizontal", pad=0.05,
+                                 aspect=30, label="Height (m)")
+            cbar1.ax.tick_params(labelsize=FONT_SIZE)
+            cbar1.set_label("Height (m)", fontsize=LABEL_SIZE)
 
             ax2 = plt.subplot(n_times, 3, idx * 3 + 2, projection=ccrs.PlateCarree())
             if use_features:
@@ -91,9 +104,11 @@ def plot_geopotential_comparison(
                 ax2.add_feature(cfeature.BORDERS, linestyle=':')
             mesh2 = ax2.pcolormesh(lon2d, lat2d, truth[i], cmap=cmap,
                                    shading='auto', vmin=vmin, vmax=vmax)
-            ax2.set_title(f'Truth - Day {day} Hour {hour}', fontsize=12)
-            plt.colorbar(mesh2, ax=ax2, orientation='horizontal', pad=0.05,
-                        aspect=30, label='Height (m)')
+            ax2.set_title(f"Truth - Day {day} Hour {hour}", fontsize=TITLE_SIZE)
+            cbar2 = plt.colorbar(mesh2, ax=ax2, orientation="horizontal", pad=0.05,
+                                 aspect=30, label="Height (m)")
+            cbar2.ax.tick_params(labelsize=FONT_SIZE)
+            cbar2.set_label("Height (m)", fontsize=LABEL_SIZE)
 
             ax3 = plt.subplot(n_times, 3, idx * 3 + 3, projection=ccrs.PlateCarree())
             if use_features:
@@ -102,9 +117,11 @@ def plot_geopotential_comparison(
                 ax3.add_feature(cfeature.BORDERS, linestyle=':')
             mesh3 = ax3.pcolormesh(lon2d, lat2d, difference[i], cmap='RdBu_r',
                                    shading='auto', vmin=-100, vmax=100)
-            ax3.set_title(f'Difference - Day {day} Hour {hour}', fontsize=12)
-            plt.colorbar(mesh3, ax=ax3, orientation='horizontal', pad=0.05,
-                        aspect=30, label='Difference (m)')
+            ax3.set_title(f"Difference - Day {day} Hour {hour}", fontsize=TITLE_SIZE)
+            cbar3 = plt.colorbar(mesh3, ax=ax3, orientation="horizontal", pad=0.05,
+                                 aspect=30, label="Difference (m)")
+            cbar3.ax.tick_params(labelsize=FONT_SIZE)
+            cbar3.set_label("Difference (m)", fontsize=LABEL_SIZE)
 
         plt.tight_layout()
         return fig
